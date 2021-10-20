@@ -81,8 +81,8 @@ Also maybe for the future:
 
 ## License
 
-All code in this repository is licensed under the MIT license. No restrictions, but no warranties. See the [LICENSE](LICENSE) file for details.
+All code in this repository is licensed under the MIT license. No restrictions, but no warranties. See the [LICENSE](https://github.com/JacobFV/jnumpy/blob/main/LICENSE) file for details.
 
 ## Contributing
 
-This is a small project. I don't plan to grow it unless necesary. You are welcome to fork and contribute or email me `jacob` [dot] `valdez` [at] `limboid` [dot] `ai` if you would like to take over.
+This is a small project, and I don't plan on growing it much. You are welcome to fork and contribute or email me `jacob` [dot] `valdez` [at] `limboid` [dot] `ai` if you would like to take over.
