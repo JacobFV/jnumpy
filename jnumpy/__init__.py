@@ -1,4 +1,4 @@
-# Jumpy: Jacob's numpy library for Machine Learning
+# Jnumpy: Jacob's numpy library for machine learning
 # Copyright (c) 2021 Jacob F. Valdez. Released under the MIT license.
 
 from typing import Tuple, List, Optional, Union

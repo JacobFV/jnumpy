@@ -1,16 +1,25 @@
-# Jumpy
+# Jnumpy
 
-Jacob's numpy library extension.
+Jacob's numpy library for machine learning
 
 ## Getting started
 
-1. Clone this repository to your local project directory.
-2. Import the `jumpy` module.
+1. Install from `pip` or clone locally:
+
+```bash
+$ pip install jnumpy
+```
+
+2. Import the `jnumpy` module.
+
+```python
+import jnumpy as jnp
+```
 
 ## Example
 
 ```python
-from jumpy import *
+from jnumpy import *
 
 def NN(X_T):
     """Build a simple neural network."""
@@ -61,11 +70,11 @@ for epoch in range(rounds):
 
 ## Limitations and Future Work
 
-Version 2.0 will support the following:
+Version 2.0 is under development (see the dev branch) and will feature:
 - static execution graphs
-- a keras-style neural network API with `fit`, `evaluate`, and `predict`
-- premade layers
-- a richer library of optimizers, metrics, and losses
+- a keras-style neural network API with `fit`, `evaluate`, and `predict` and premade layers
+- richer collections of optimizers, metrics, and losses
+- more examples
 
 Also maybe for the future:
 - custom backends (i.e.: tensorflow or pytorch instead of numpy)
