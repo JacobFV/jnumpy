@@ -1,6 +1,7 @@
 # Jnumpy
 
 [![PyPI version](https://badge.fury.io/py/jnumpy.svg)](https://badge.fury.io/py/jnumpy)
+[![](https://img.shields.io/badge/license-MIT-blue)](https://github.com/JacobFV/jnumpy/blob/main/LICENSE)
 
 
 Jacob's numpy library for machine learning
