@@ -1,9 +1,8 @@
 # Jnumpy
 
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/e1cb295484424f36acf2c813fae6f57e)](https://app.codacy.com/gh/JacobFV/jnumpy?utm_source=github.com&utm_medium=referral&utm_content=JacobFV/jnumpy&utm_campaign=Badge_Grade_Settings)
 [![PyPI version](https://badge.fury.io/py/jnumpy.svg)](https://badge.fury.io/py/jnumpy)
 [![](https://img.shields.io/badge/license-MIT-blue)](https://github.com/JacobFV/jnumpy/blob/main/LICENSE)
-
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/e1cb295484424f36acf2c813fae6f57e)](https://app.codacy.com/gh/JacobFV/jnumpy?utm_source=github.com&utm_medium=referral&utm_content=JacobFV/jnumpy&utm_campaign=Badge_Grade_Settings)
 
 Jacob's numpy library for machine learning
 
