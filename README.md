@@ -1,5 +1,8 @@
 # Jnumpy
 
+[![PyPI version](https://badge.fury.io/py/jnumpy.svg)](https://badge.fury.io/py/jnumpy)
+
+
 Jacob's numpy library for machine learning
 
 ## Getting started
