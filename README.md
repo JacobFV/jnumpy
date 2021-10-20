@@ -59,3 +59,21 @@ for epoch in range(rounds):
     print(f'Epoch {epoch+1}/{rounds} train loss: {train_loss/num_train_batches}')
 ```
 
+## Limitations and Future Work
+
+Version 2.0 will support the following:
+- static execution graphs
+- a keras-style neural network API with `fit`, `evaluate`, and `predict`
+- premade layers
+- a richer library of optimizers, metrics, and losses
+
+Also maybe for the future:
+- custom backends (i.e.: tensorflow or pytorch instead of numpy)
+
+## License
+
+All code in this repository is licensed under the MIT license. No restrictions, but no warranties. See the [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+This is a small project. I don't plan to grow it unless necesary. You are welcome to fork and contribute or email me `jacob` [dot] `valdez` [at] `limboid` [dot] `ai` if you would like to take over.
