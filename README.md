@@ -12,6 +12,10 @@ Jacob's numpy library for machine learning
 
 ```bash
 $ pip install jnumpy
+# or
+$ git clone https://github.com/JacobFV/jnumpy.git
+$ cd jnumpy
+$ pip install .
 ```
 
 2. Import the `jnumpy` module.
@@ -90,3 +94,5 @@ All code in this repository is licensed under the MIT license. No restrictions, 
 ## Contributing
 
 This is a small project, and I don't plan on growing it much. You are welcome to fork and contribute or email me `jacob` [dot] `valdez` [at] `limboid` [dot] `ai` if you would like to take over.
+
+The codebase is kepy in only a few files, and I have tried to minimize the use of module prefixes because my CSE 4308/4309/4392 classes require the submissions to be in a single file. 
