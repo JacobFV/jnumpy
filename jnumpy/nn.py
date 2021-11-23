@@ -62,7 +62,7 @@ class Layer:
             self._built = True
 
         # reset the regularization loss
-        self._loss = jnp.Var(0., trainable=False)
+        self._loss = jnp.Var(0.0, trainable=False)
 
         return self.forward(X_T)
 
@@ -72,7 +72,7 @@ class Dense(Layer):
 
     Args:
         units (int): Number of output units in the layer.
-        activation (Op, optional): Activation function to apply 
+        activation (Op, optional): Activation function to apply
             to the output. Defaults to Linear.
         use_bias (bool, optional): Whether to use a bias. Defaults to True.
         activity_L2 (float, optional): L2 regularization coefficient
@@ -81,7 +81,7 @@ class Dense(Layer):
             for the weights. Default is None.
         bias_L2 (float, optional): L2 regularization coefficient
             for the bias. Default is None.
-    
+
     Example:
         >>> layer = Dense(10, Relu, 0.1, 0.1, 0.1)
         >>> X_T = jnp.Var(np.random.uniform(0, 1, size=(3, 5)), trainable=False)
@@ -89,29 +89,33 @@ class Dense(Layer):
         >>> X_T.val, Y_T.val, layer.loss, layer.trainable_variables
     """
 
-    def __init__(self, 
-        units: int, 
-        activation: Op = None, 
+    def __init__(
+        self,
+        units: int,
+        activation: Op = None,
         use_bias: bool = True,
-        activity_L2: float = None, 
-        weight_L2: float = None,  
-        bias_L2: float = None
+        activity_L2: float = None,
+        weight_L2: float = None,
+        bias_L2: float = None,
     ):
         super(Dense, self).__init__()
 
         if activation is None:
             activation = jnp.Linear
-            
+
         self.units = units
         self.activation = activation
         self.use_bias = use_bias
 
-        self.activity_L2 = jnp.Var(activity_L2, trainable=False) \
-            if activity_L2 is not None else None
-        self.weight_L2 = jnp.Var(weight_L2, trainable=False) \
-            if weight_L2 is not None else None
-        self.bias_L2 = jnp.Var(bias_L2, trainable=False) \
-            if bias_L2 is not None else None
+        self.activity_L2 = (
+            jnp.Var(activity_L2, trainable=False) if activity_L2 is not None else None
+        )
+        self.weight_L2 = (
+            jnp.Var(weight_L2, trainable=False) if weight_L2 is not None else None
+        )
+        self.bias_L2 = (
+            jnp.Var(bias_L2, trainable=False) if bias_L2 is not None else None
+        )
 
     @property
     def trainable_variables(self) -> List[jnp.T]:
@@ -135,14 +139,20 @@ class Dense(Layer):
 
         # apply activation
         Y_T = self.activation(Z_T)
-        
+
         # track regularization losses
         if self.activity_L2 is not None:
-            self._loss += self.activity_L2 * jnp.ReduceSum(jnp.ReduceSum(Y_T**2, 1), 0)
+            self._loss += self.activity_L2 * jnp.ReduceSum(
+                jnp.ReduceSum(Y_T ** 2, 1), 0
+            )
         if self.weight_L2 is not None:
-            self._loss += self.weight_L2 * jnp.ReduceSum(jnp.ReduceSum(self.W_T**2, 1), 0)
+            self._loss += self.weight_L2 * jnp.ReduceSum(
+                jnp.ReduceSum(self.W_T ** 2, 1), 0
+            )
         if self.use_bias and self.bias_L2 is not None:
-            self._loss += self.bias_L2 * jnp.ReduceSum(jnp.ReduceSum(self.B_T**2, 1), 0)
+            self._loss += self.bias_L2 * jnp.ReduceSum(
+                jnp.ReduceSum(self.B_T ** 2, 1), 0
+            )
 
         return Y_T
 
@@ -154,15 +164,15 @@ class Conv2D(Layer):
 
     Args:
         filters (int): Number of filters to apply
-        kernel_size (Union[int, Tuple[int, int]], optional): 
+        kernel_size (Union[int, Tuple[int, int]], optional):
             The size of the convolution kernel. Default is 3x3.
         strides (Union[int, Tuple[int, int]], optional):
-            The stride of the convolution. Default is 1. 
+            The stride of the convolution. Default is 1.
         padding (str, optional): The padding type. Can be
             'valid' or 'same'. Default is 'same'.
-        activation (jnp.Op, optional): The activation function. 
+        activation (jnp.Op, optional): The activation function.
             Default is Linear.
-        use_bias (bool, optional): Whether to use a bias. Default 
+        use_bias (bool, optional): Whether to use a bias. Default
             is False.
         activity_L2 (float, optional): L2 regularization coefficient
             for the activity. Default is None.
@@ -178,15 +188,16 @@ class Conv2D(Layer):
         >>> X_T.shape, Y_T.shape, layer.loss, layer.trainable_variables
     """
 
-    def __init__(self,
-        filters: int, 
+    def __init__(
+        self,
+        filters: int,
         kernel_size: Union[int, Tuple[int, int]] = 3,
         strides: Union[int, Tuple[int, int]] = 1,
-        padding: str = 'valid',  # 'valid' or 'same'
+        padding: str = "valid",  # 'valid' or 'same'
         activation: jnp.Op = None,
         use_bias: bool = False,
-        activity_L2: float = None, 
-        weight_L2: float = None,  
+        activity_L2: float = None,
+        weight_L2: float = None,
         bias_L2: float = None,
     ):
         super(Conv2D, self).__init__()
@@ -195,12 +206,14 @@ class Conv2D(Layer):
             activation = jnp.Linear
         if isinstance(kernel_size, int):
             kernel_size = (kernel_size, kernel_size)
-        assert kernel_size[0] % 2 == 1 and kernel_size[1] % 2 == 1, 'kernel_size must be odd'
+        assert (
+            kernel_size[0] % 2 == 1 and kernel_size[1] % 2 == 1
+        ), "kernel_size must be odd"
         if isinstance(strides, int):
             strides = (strides, strides)
-        assert strides[0] > 0 and strides[1] > 0, 'strides must be positive'
+        assert strides[0] > 0 and strides[1] > 0, "strides must be positive"
         padding = padding.lower()
-        assert padding in ('valid', 'same'), 'padding must be valid or same'
+        assert padding in ("valid", "same"), "padding must be valid or same"
 
         self.filters = filters
         self.kernel_size = kernel_size
@@ -209,20 +222,31 @@ class Conv2D(Layer):
         self.activation = activation
         self.use_bias = use_bias
 
-        self.activity_L2 = jnp.Var(activity_L2, trainable=False) if activity_L2 is not None else None
-        self.weight_L2 = jnp.Var(weight_L2, trainable=False) if weight_L2 is not None else None
-        self.bias_L2 = jnp.Var(bias_L2, trainable=False) if bias_L2 is not None else None
+        self.activity_L2 = (
+            jnp.Var(activity_L2, trainable=False) if activity_L2 is not None else None
+        )
+        self.weight_L2 = (
+            jnp.Var(weight_L2, trainable=False) if weight_L2 is not None else None
+        )
+        self.bias_L2 = (
+            jnp.Var(bias_L2, trainable=False) if bias_L2 is not None else None
+        )
 
     @property
     def trainable_variables(self) -> List[jnp.T]:
         return [self.W_T] + ([self.B_T] if self.use_bias else [])
 
     def build(self, input_shape):
-        W = np.random.uniform(low=-0.05, high=0.05, size=(
-            self.kernel_size[0]*self.kernel_size[1]*input_shape[-1], 
-            self.filters))
+        W = np.random.uniform(
+            low=-0.05,
+            high=0.05,
+            size=(
+                self.kernel_size[0] * self.kernel_size[1] * input_shape[-1],
+                self.filters,
+            ),
+        )
         self.W_T = jnp.Var(val=W, trainable=True)
-        
+
         if self.use_bias:
             B = np.random.uniform(low=-0.05, high=0.05, size=(1, self.filters))
             self.B_T = jnp.Var(val=B, trainable=True)
@@ -230,7 +254,7 @@ class Conv2D(Layer):
     def forward(self, X_T: jnp.T) -> jnp.T:
 
         # maybe pad input
-        if self.padding == 'same':
+        if self.padding == "same":
 
             # various padding sizes, strides, and offsets
             # 0   1   2   3   4
@@ -239,47 +263,60 @@ class Conv2D(Layer):
             #         0 1 2 3 4
             #         0   1   2   3   4
 
-            pad_top = self.strides[0]*(self.kernel_size[0]-1)//2
+            pad_top = self.strides[0] * (self.kernel_size[0] - 1) // 2
             pad_bottom = pad_top
-            pad_left = self.strides[1]*(self.kernel_size[1]-1)//2
+            pad_left = self.strides[1] * (self.kernel_size[1] - 1) // 2
             pad_right = pad_left
             B, H_orig, W_orig, C = X_T.shape
 
             # pad height
-            X_T = jnp.Concat([
-                jnp.Var(np.zeros((B, pad_top, W_orig, C)), trainable=False),
-                X_T,
-                jnp.Var(np.zeros((B, pad_bottom, W_orig, C)), trainable=False),
-            ], axis=1)
+            X_T = jnp.Concat(
+                [
+                    jnp.Var(np.zeros((B, pad_top, W_orig, C)), trainable=False),
+                    X_T,
+                    jnp.Var(np.zeros((B, pad_bottom, W_orig, C)), trainable=False),
+                ],
+                axis=1,
+            )
 
             # pad width
-            X_T = jnp.Concat([
-                jnp.Var(np.zeros((B, H_orig+pad_top+pad_bottom, pad_left, C)), trainable=False),
-                X_T,
-                jnp.Var(np.zeros((B, H_orig+pad_top+pad_bottom, pad_right, C)), trainable=False),
-            ], axis=2)
+            X_T = jnp.Concat(
+                [
+                    jnp.Var(
+                        np.zeros((B, H_orig + pad_top + pad_bottom, pad_left, C)),
+                        trainable=False,
+                    ),
+                    X_T,
+                    jnp.Var(
+                        np.zeros((B, H_orig + pad_top + pad_bottom, pad_right, C)),
+                        trainable=False,
+                    ),
+                ],
+                axis=2,
+            )
 
-        elif self.padding == 'valid':
+        elif self.padding == "valid":
             pass
 
         # stack the input tensor along the channel axis
         # but shifted by all possible kernel shifts
         stack = []
         for shift in itertools.product(
-                range(0, self.strides[0]*self.kernel_size[0], self.strides[0]),
-                range(0, self.strides[1]*self.kernel_size[1], self.strides[1])):
-            stack.append(X_T[:, shift[0]:, shift[1]:, :])
+            range(0, self.strides[0] * self.kernel_size[0], self.strides[0]),
+            range(0, self.strides[1] * self.kernel_size[1], self.strides[1]),
+        ):
+            stack.append(X_T[:, shift[0] :, shift[1] :, :])
 
         # clip stack to greatest common shape
         min_shape = np.min(np.array([s.shape for s in stack]), axis=0)
-        stack = [s[:, :min_shape[1], :min_shape[2], :] for s in stack]
+        stack = [s[:, : min_shape[1], : min_shape[2], :] for s in stack]
 
         # stack the shifted tensors along the channel axis
         stacked = jnp.Concat(stack, axis=3)  # [B, H-k_h//2, W-k_w//2, C*k_h*k_w]
 
         # convolve over the stacked tensors
-        Z_T = stacked @ self.W_T  
-    
+        Z_T = stacked @ self.W_T
+
         # maybe add bias
         if self.use_bias:
             Z_T = Z_T + self.B_T
@@ -289,17 +326,22 @@ class Conv2D(Layer):
 
         # track regularization losses
         if self.activity_L2 is not None:
-            self._loss += self.activity_L2 * jnp.ReduceSum(jnp.ReduceSum(Y_T**2, 1), 0)
+            self._loss += self.activity_L2 * jnp.ReduceSum(
+                jnp.ReduceSum(Y_T ** 2, 1), 0
+            )
         if self.weight_L2 is not None:
-            self._loss += self.weight_L2 * jnp.ReduceSum(jnp.ReduceSum(self.W_T**2, 1), 0)
+            self._loss += self.weight_L2 * jnp.ReduceSum(
+                jnp.ReduceSum(self.W_T ** 2, 1), 0
+            )
         if self.use_bias and self.bias_L2 is not None:
-            self._loss += self.bias_L2 * jnp.ReduceSum(jnp.ReduceSum(self.B_T**2, 1), 0)
+            self._loss += self.bias_L2 * jnp.ReduceSum(
+                jnp.ReduceSum(self.B_T ** 2, 1), 0
+            )
 
         return Y_T
 
 
 class AxisMaxPooling(Layer):
-
     def __init__(self, axis: int):
         super(AxisMaxPooling, self).__init__()
         self.axis = axis
@@ -309,7 +351,6 @@ class AxisMaxPooling(Layer):
 
 
 class Lambda(Layer):
-
     def __init__(self, fn: Callable[[jnp.T], jnp.T]):
         super(Lambda, self).__init__()
         self.fn = fn
@@ -320,13 +361,13 @@ class Lambda(Layer):
 
 class Flatten(Layer):
     """Flattens all non-batch dimensions into a single axis
-    
+
     Example:
         >>> layer = Flatten()
         >>> X_T = jnp.Var(np.random.uniform(0, 1, size=(2, 3, 4, 5)))
         >>> Y_T = layer(X_T)
         >>> X_T.shape, Y_T.shape, layer.loss, layer.trainable_variables
-    
+
     """
 
     def __init__(self):
@@ -337,7 +378,7 @@ class Flatten(Layer):
         return []
 
     def forward(self, X_T: jnp.T) -> jnp.T:
-        flat_dims = functools.reduce(lambda x, y: x*y, X_T.shape[1:])
+        flat_dims = functools.reduce(lambda x, y: x * y, X_T.shape[1:])
         Y_T = jnp.Reshape(X_T, (X_T.shape[0], flat_dims))
         return Y_T
 
@@ -365,7 +406,7 @@ class Sequential(Layer):
                 Dense(1, lambda x: x)
             ])
         >>> conv_net(img_T)
-        """
+    """
 
     def __init__(self, layers):
         self.layers = layers
@@ -378,8 +419,9 @@ class Sequential(Layer):
 
     @property
     def loss(self) -> jnp.T:
-        return functools.reduce(lambda x, y: x+y, 
-            [layer.loss for layer in self.layers])
+        return functools.reduce(
+            lambda x, y: x + y, [layer.loss for layer in self.layers]
+        )
 
     @property
     def trainable_variables(self) -> List[jnp.T]:

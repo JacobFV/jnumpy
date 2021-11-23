@@ -24,8 +24,8 @@ class Environment:
         """Resets the environment
 
         Returns:
-            Step: Initial step. The `next_obs` attribute should be set 
-                with an initial observation. `done` should be False. 
+            Step: Initial step. The `next_obs` attribute should be set
+                with an initial observation. `done` should be False.
                 `obs` and `action` should not be used.
         """
         pass
@@ -39,8 +39,8 @@ class Environment:
         Returns:
             Step: Step resulting from taking `action`. The `next_obs` attribute
                 should be set with the observation resulting from taking the `action`
-                in the current environment state. `obs` should not be used. If the 
-                environment is turn-based, then the reward should correspond to the 
+                in the current environment state. `obs` should not be used. If the
+                environment is turn-based, then the reward should correspond to the
                 agent that just acted (not the next agent in line to act).
         """
         pass
@@ -87,7 +87,7 @@ class Batch1Env(BatchEnv):
 
 class ParallelEnv(BatchEnv):
     """Keeps reseting the same environment in a batch.
-    
+
     Declares itself done when a total of `batch_size` individual environment
     dones are experienced.
 
@@ -137,7 +137,7 @@ class ReplayBuffer:
         - `success_replay_coef`: Sampling coefficient based on trajectory success.
         - `age_replay_coef`: Sampling coefficient based on trajectory age.
     """
-  
+
     def __init__(self, hparams: dict):
         self.hparams = hparams
         self.trajs = dict()
@@ -152,7 +152,7 @@ class ReplayBuffer:
         Args:
             traj (Traj): the trajectory to add.
         """
-        epoch = self.hparams['epoch']
+        epoch = self.hparams["epoch"]
         if epoch not in self.trajs:
             self.trajs[epoch] = []
         self.trajs[epoch] += traj
@@ -166,14 +166,17 @@ class ReplayBuffer:
         Returns:
             Traj: a trajectory of batched steps experienced.
         """
-        
+
         weights = {
-            epoch: self.hparams['num_steps_replay_coef'] * len(traj) +
-                   self.hparams['success_replay_coef'] * sum(np.sum(step.reward) for step in traj) +
-                   self.hparams['age_replay_coef'] * (epoch - self.hparams['epoch'])
+            epoch: self.hparams["num_steps_replay_coef"] * len(traj)
+            + self.hparams["success_replay_coef"]
+            * sum(np.sum(step.reward) for step in traj)
+            + self.hparams["age_replay_coef"] * (epoch - self.hparams["epoch"])
             for epoch, traj in self.trajs.items()
         }
-        epoch = np.random.choice(list(weights.keys()), p=list(weights.values())/sum(weights.values()))
+        epoch = np.random.choice(
+            list(weights.keys()), p=list(weights.values()) / sum(weights.values())
+        )
         return self.trajs[epoch]
 
 
@@ -187,7 +190,7 @@ class ParallelDriver:
 
     def drive(self, agents: Mapping[str, Agent], env: BatchEnv) -> Mapping[str, Traj]:
         """Drives a batched environment with multiple agents.
-        
+
         Args:
             agents (Mapping[str, Agent]): A dictionary of agents to drive.
             env (BatchEnv): The environment to drive.
@@ -201,38 +204,50 @@ class ParallelDriver:
 
         names_it = itertools.cycle(agents.keys())
         trajs = {agent_name: [] for agent_name in agents}
-        prev_rewards = {agent_name: 0. for agent_name in agents}
+        prev_rewards = {agent_name: 0.0 for agent_name in agents}
 
         step = env.reset()
         while not step.done:
             agent_name = next(names_it)
-            
+
             # `Agent.forward` only looks at `step.next_obs` and `step.reward`
             # but I'm assigning defaults just to be safe.
-            action = agents[agent_name].forward(Step(
-                obs=step.obs,  # what the previous agent saw before acting
-                action=step.action,  # what the previous agent did
-                next_obs=step.next_obs,  # what the current agent sees before acting
-                reward=prev_rewards[agent_name],  # the reward this agent experienced following its last action
-                done=step.done,  # whether the environment was done after the previous agent acted
-                info=step.info  # any extra information the environment might have output
-            )) 
+            action = agents[agent_name].forward(
+                Step(
+                    obs=step.obs,  # what the previous agent saw before acting
+                    action=step.action,  # what the previous agent did
+                    next_obs=step.next_obs,  # what the current agent sees before acting
+                    reward=prev_rewards[
+                        agent_name
+                    ],  # the reward this agent experienced following its last action
+                    done=step.done,  # whether the environment was done after the previous agent acted
+                    info=step.info,  # any extra information the environment might have output
+                )
+            )
 
             prev_step = step
-            step = env.step(action)  # `Environment.step` produces a Step with all fields except `step.obs` set
-            step.obs = prev_step.next_obs  # the current agent's observation is the previous agent's next observation
-            prev_rewards[agent_name] = step.reward  # the reward for the action the current agent just took
-            trajs[agent_name].append(step)  # Step completely corresponding to this agent (obs before action, obs after action, action, reward, done, info)
-        
+            step = env.step(
+                action
+            )  # `Environment.step` produces a Step with all fields except `step.obs` set
+            step.obs = (
+                prev_step.next_obs
+            )  # the current agent's observation is the previous agent's next observation
+            prev_rewards[
+                agent_name
+            ] = step.reward  # the reward for the action the current agent just took
+            trajs[agent_name].append(
+                step
+            )  # Step completely corresponding to this agent (obs before action, obs after action, action, reward, done, info)
+
         # remove the agents' first trajectories since they don't carry Markovian information
-        trajs = {n: traj[1:] for n, traj in trajs.items()}  
+        trajs = {n: traj[1:] for n, traj in trajs.items()}
         return trajs
 
 
 class ParallelTrainer:
-    """Trains `BatchEnv` environments and mutliple agents 
+    """Trains `BatchEnv` environments and mutliple agents
     (with N=1 single-agent supported as a special case).
-    
+
     Uses following hyperparameters:
     - `epoch`: the current epoch. Reads and writes to this variable.
     - `epochs`: the number of epochs to train for.
@@ -242,19 +257,20 @@ class ParallelTrainer:
     def __init__(self, hparams: dict, callbacks: List[Callable]):
         self.hparams = hparams
         self.callbacks = callbacks
-        
-    def train(self, 
-        agents: Mapping[str, Agent], 
+
+    def train(
+        self,
+        agents: Mapping[str, Agent],
         env: BatchEnv,
         test_env: BatchEnv = None,
         buffers: Mapping[str, ReplayBuffer] = None,
         collect_driver: ParallelDriver = None,
         test_driver: ParallelDriver = None,
         histories: Mapping[str, Mapping[int, Mapping[str, any]]] = None,
-        ) -> Mapping[int, Mapping[str, any]]:
+    ) -> Mapping[int, Mapping[str, any]]:
 
         agent_names = list(agents.keys())
-        
+
         # initialize defaults
         if test_env is None:
             test_env = env
@@ -275,37 +291,39 @@ class ParallelTrainer:
                 histories[agent_name] = dict()
 
         # run training loop
-        for epoch in range(self.hparams['epoch'], self.hparams['epochs']):
-            self.hparams['epoch'] = epoch
+        for epoch in range(self.hparams["epoch"], self.hparams["epochs"]):
+            self.hparams["epoch"] = epoch
 
             # collect trajectories
             steps = 0
-            while steps < self.hparams['min_steps_per_epoch']:
+            while steps < self.hparams["min_steps_per_epoch"]:
                 collect_trajs = collect_driver.drive(agents, env)
                 steps += min(len(traj) for _, traj in collect_trajs.items())
                 for agent_name in agent_names:
                     buffers[agent_name].add(collect_trajs[agent_name])
 
             # train
-            train_trajs = {agent_name: buffers[agent_name].sample() for agent_name in agent_names}
+            train_trajs = {
+                agent_name: buffers[agent_name].sample() for agent_name in agent_names
+            }
             for agent_name in agent_names:
                 agents[agent_name].train(train_trajs[agent_name])
-                
+
             # test
             test_trajs = test_driver.drive(agents, env)
 
             # record history and run callbacks
             for agent_name in agent_names:
                 histories[agent_name][epoch] = {
-                    'epoch': epoch,
-                    'agent': agents[agent_name],
-                    'all_agents': agents,
-                    'env': env,
-                    'test_env': test_env,
-                    'collect_traj': collect_trajs[agent_name],
-                    'train_traj': train_trajs[agent_name],
-                    'test_traj': test_trajs[agent_name],
-                    'buffer': buffers[agent_name],
+                    "epoch": epoch,
+                    "agent": agents[agent_name],
+                    "all_agents": agents,
+                    "env": env,
+                    "test_env": test_env,
+                    "collect_traj": collect_trajs[agent_name],
+                    "train_traj": train_trajs[agent_name],
+                    "test_traj": test_trajs[agent_name],
+                    "buffer": buffers[agent_name],
                 }
                 for callback in self.callbacks:
                     callback(histories[agent_name][epoch])
@@ -314,54 +332,60 @@ class ParallelTrainer:
 
 
 class PrintCallback:
-
-    def __init__(self, hparams: dict, print_hparam_keys: List[str] = None, print_data_keys: List[str] = None):
+    def __init__(
+        self,
+        hparams: dict,
+        print_hparam_keys: List[str] = None,
+        print_data_keys: List[str] = None,
+    ):
         if print_hparam_keys is None:
-            print_hparam_keys = ['epoch']
+            print_hparam_keys = ["epoch"]
         if print_data_keys is None:
             print_data_keys = []
-        
+
         self.hparams = hparams
         self.print_hparam_keys = print_hparam_keys
         self.print_data_keys = print_data_keys
 
     def __call__(self, data: Mapping[str, any]):
         for key in self.print_hparam_keys:
-            print(f'{key}: {self.hparams[key]}', end='\t')
+            print(f"{key}: {self.hparams[key]}", end="\t")
         for key in self.print_data_keys:
-            print(f'{key}: {data[key]}', end='\t')
+            print(f"{key}: {data[key]}", end="\t")
 
 
 class QEvalCallback:
-
-    def __init__(self, 
-        eval_on_collect: bool = True, 
-        eval_on_train: bool = False, 
-        eval_on_test: bool = False):
+    def __init__(
+        self,
+        eval_on_collect: bool = True,
+        eval_on_train: bool = False,
+        eval_on_test: bool = False,
+    ):
 
         self.eval_on_collect = eval_on_collect
         self.eval_on_train = eval_on_train
         self.eval_on_test = eval_on_test
 
     def __call__(self, data: Mapping[str, any]):
-        agent = data['agent']
-        if not hasattr(agent, 'q_eval'):
+        agent = data["agent"]
+        if not hasattr(agent, "q_eval"):
             return
 
         if self.eval_on_collect:
-            traj = data['collect_traj']
+            traj = data["collect_traj"]
             q_val = agent.q_eval(traj)
-            data['q_collect'] = q_val
+            data["q_collect"] = q_val
 
         if self.eval_on_train:
-            traj = data['train_traj']
+            traj = data["train_traj"]
             q_val = agent.q_eval(traj)
-            data['q_train'] = q_val
+            data["q_train"] = q_val
 
         if self.eval_on_test:
-            traj = data['test_traj']
+            traj = data["test_traj"]
             q_val = agent.q_eval(traj)
-            data['q_test'] = q_val
+            data["q_test"] = q_val
+
 
 # TODO
 # - also make a recurrent DQN agent (estimate q function of a sequence of states)

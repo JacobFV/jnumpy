@@ -4,4 +4,5 @@
 
 from jnumpy.rl.core import *
 from jnumpy.rl import agents
+
 # jnumpy.rl.types are already imported from jnumpy.rl.core

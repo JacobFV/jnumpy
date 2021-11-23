@@ -12,14 +12,15 @@ from typing import List
 
 class Step:
     """Single step."""
-    
-    def __init__(self,
+
+    def __init__(
+        self,
         obs: np.ndarray,
         next_obs: np.ndarray,
         action: np.ndarray,
         reward: np.ndarray,
         done: bool,
-        info: any
+        info: any,
     ):
         self.obs = obs
         self.next_obs = next_obs
@@ -32,12 +33,12 @@ class Step:
     def unbatch(step: Step) -> List[Step]:
         return [
             Step(
-                obs=step.obs[i:i+1],
-                next_obs=step.next_obs[i:i+1],
-                action=step.action[i:i+1],
-                reward=step.reward[i:i+1],
+                obs=step.obs[i : i + 1],
+                next_obs=step.next_obs[i : i + 1],
+                action=step.action[i : i + 1],
+                reward=step.reward[i : i + 1],
                 done=step.done,
-                info=step.info[i:i+1],
+                info=step.info[i : i + 1],
             )
             for i in range(step.obs.shape[0])
         ]
@@ -50,7 +51,8 @@ class Step:
             action=np.concatenate([step.action for step in steps], axis=0),
             reward=np.concatenate([step.reward for step in steps], axis=0),
             done=any(step.done for step in steps),
-            info=[step.info for step in steps])
+            info=[step.info for step in steps],
+        )
 
     @staticmethod
     def from_no_batch_axis(step: NoBatchStep) -> Step:
@@ -60,8 +62,9 @@ class Step:
             action=step.action[None, ...],
             reward=step.reward[None, ...],
             done=step.done,
-            info=[step.info]
+            info=[step.info],
         )
+
 
 # dimensional type hinting
 BatchStep = Step
