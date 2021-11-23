@@ -1,0 +1,25 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    { // TODO: make this configuation work for connect_n
+      "name": "Examples",
+      "type": "python",
+      "request": "launch",
+      "program": "${file}",
+      "args": [
+        "-m",
+        "${workspaceFolderBasename}"
+      ],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Python: Module",
+      "type": "python",
+      "request": "launch",
+      "module": "jnumpy"
+    }
+  ]
+}

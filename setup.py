@@ -6,7 +6,7 @@ with open("README.md") as f:
 
 setuptools.setup(
     name="jnumpy",
-    version="1.0.0",
+    version="1.1.0",
     author="Jacob Valdez",
     author_email="jacobfv@msn.com",
     description="Jacob's numpy library for machine learning.",
@@ -19,12 +19,12 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires='>=3.6',
+    python_requires=">=3.6",
     install_requires=[
         "numpy",
     ],
     keywords="numpy machine learning automatic differentiation",
     project_urls={
-        'Homepage': "https://github.com/JacobFV/jnumpy",
+        "Homepage": "https://github.com/JacobFV/jnumpy",
     },
 )

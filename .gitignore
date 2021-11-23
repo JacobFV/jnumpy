@@ -1,3 +1,8 @@
+# pycache
+__pycache__
+
+
+# pypi
 build
 dist
 **.egg-info
