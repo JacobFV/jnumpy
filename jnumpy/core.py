@@ -12,20 +12,28 @@ from typing import Tuple, List, Union, Optional
 import numpy as np
 
 
-V = np.array # V is for Value type
-Vs = Tuple[V]
-Vss = Union[V,Vs]
+V = np.array  # Value type
+Vs = Tuple[V]  # tuple of value types
+Vss = Union[V,Vs]  # single value or tuple of value types
 
 
 class ExecutionMode:
     EAGER=1
     STATIC=2  # STATIC execution mode not supported
-    
 EXECUTION_MODE = ExecutionMode.EAGER
 
 
 class T:
-    """Tensor"""
+    """Tensor.
+    
+    Base class for all tensors.
+    
+    Args:
+        val (V, optional): Value of the variable. Optional if `EXECUTION_MODE`
+            is `STATIC`. Otherwise you should supply a value. `Op` tensors should
+            call their `forward` method to compute the value before calling the 
+            base __init__ function.
+    """
     
     def __init__(self, val: Optional[V] = None):
         self.val = val
@@ -105,12 +113,22 @@ class T:
         return self.val.__array__()
 
 
-Ts = Tuple[T]
-Tss = Union[T,Ts]
+Ts = Tuple[T]  # tuple of tensors
+Tss = Union[T,Ts]  # single or tuple of tensors
 
 
 class Var(T):
-    """Variable Tensor"""
+    """Variable Tensor. 
+    A variable is a tensor that can be trained.
+    
+    Args:
+        val (V, optional): Value of the variable. Optional if `EXECUTION_MODE`
+            is `STATIC`. Otherwise you should supply a value.
+        trainable (bool, optional): Whether the variable is trainable. 
+            Read by the optimizer when backpropagating gradients.
+            The default is True.
+    """
+
     def __init__(self, val: Optional[V] = None, trainable: bool = True):
         
         self.trainable = trainable
@@ -118,12 +136,16 @@ class Var(T):
 
 
 class Op(T):
-    """Operation-backed Tensor"""
+    """Operator Tensor
+    
+    Make sure to set any variables you might need to use in `forward` 
+    before leaving __init__ when the graph is in eager execution mode.
+
+    Args:
+        inputs (Tuple[T]): Tuple of input Tensors (each is only a single T).
+    """
     
     def __init__(self, *inputs: T):
-        """Make sure to set any variables you might need in `forward` 
-        before initializing when the graph is in eager execution mode
-        """
         
         self.input_ts = inputs
         
@@ -142,6 +164,12 @@ class Op(T):
 
 
 class Transpose(Op):
+    """Transpose operator
+
+    Args:
+        t (T): Tensor to transpose
+        axes (Tuple[int]): Axes to transpose over
+    """
     
     def __init__(self, t: T, axes: Tuple[int] = None):
         
@@ -170,6 +198,12 @@ class Transpose(Op):
 
 
 class Reshape(Op):
+    """Tensor reshaping operator.
+
+    Args:
+        t (T): Tensor to reshape
+        shape (Tuple[int]): New shape of the tensor
+    """
     
     def __init__(self, t: T, shape: Tuple[int]):
         
@@ -193,14 +227,14 @@ class Reshape(Op):
  
 
 class Concat(Op):
+    """Concatenates input tensors along an axis
+
+    Args:
+        t (T): [description]
+        axis (int, optional): Axis to concatenate along. Defaults to 0.
+    """
     
     def __init__(self, ts: List[T], axis: int = 0):
-        """Concatenates input tensors along an axis
-
-        Args:
-            t (T): [description]
-            axis (int, optional): Axis to concatenate along. Defaults to 0.
-        """
         
         self.axis = axis
         self.orig_axis_lens = [t.shape[axis] for t in ts]
@@ -223,16 +257,16 @@ class Concat(Op):
 
 
 class Index(Op):
+    """Slices a tensor along all axes.
+
+    Args:
+        t (T): The tensor to slice
+        indices (Tuple[slice]):  The partial or full indices to slice on `t`.
+            Can be an index, single slice, tuple of slices, or Ellipsis.
+            `None` is not allowed.
+    """
     
     def __init__(self, t: T, indices):
-        """Slices a tensor along all axes.
-
-        Args:
-            t (T): The tensor to slice
-            indices (Tuple[slice]):  The partial or full indices to slice on `t`.
-                Can be an index, single slice, tuple of slices, or Ellipsis.
-                `None` is not allowed.
-        """
         if not isinstance(indices, tuple):
             indices = (indices,)
 
@@ -258,6 +292,7 @@ class Index(Op):
 
 
 class ReduceSum(Op):
+    """Reduce sum oeprator"""
     
     def __init__(self, t: T, axis: int):
         self.axis = axis
@@ -338,6 +373,12 @@ class ReduceMin(Op):
 
 
 class NaN2Num(Op):
+    """Not a number correction operator:
+    
+    y = x
+    neginf < y < posinf
+    neginf < dx(dy) < posinf    
+    """
     
     def __init__(self, t: T, posinf: float = 1e3, neginf: float = -1e3):
         self.posinf = posinf
@@ -361,6 +402,7 @@ class NaN2Num(Op):
 
 
 class Linear(Op):
+    """Linear operator: y = x"""
     
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -378,6 +420,7 @@ class Linear(Op):
 
 
 class StopGrad(Op):
+    """Stop gradient operator: y = x. dx(dy) = 0"""
     
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -395,6 +438,7 @@ class StopGrad(Op):
 
 
 class Neg(Op):
+    """Negation operator: y = -x"""
     
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -412,6 +456,7 @@ class Neg(Op):
 
 
 class Add(Op):
+    """Addition operator: z = x + y"""
     
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -431,6 +476,7 @@ class Add(Op):
 
 
 class Sub(Op):
+    """Subtraction operator: z = x - y"""
     
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -450,6 +496,7 @@ class Sub(Op):
 
 
 class Mul(Op):
+    """Multipulcation operator: z = xy"""
     
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -471,6 +518,7 @@ class Mul(Op):
 
 
 class MatMul(Op):
+    """Matrix multipulcation operator: Z = XY"""
     
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -492,6 +540,7 @@ class MatMul(Op):
 
 
 class Exp(Op):
+    """Exponential operator: y = e^x"""
     
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -528,6 +577,7 @@ class Sigm(Op):
 
 
 class Tanh(Op):
+    """Hyperbolic tangent: y = tanh(x)"""
     
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -546,6 +596,7 @@ class Tanh(Op):
 
 
 class Relu(Op):
+    """Rectified linear unit: y = ReLU(x)"""
     
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -564,6 +615,10 @@ class Relu(Op):
 
 
 class Threshold(Op):
+    """Threshold operator:
+    
+    y = 1 if x >= 0
+    y = 0 if x < 0"""
     
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -581,6 +636,12 @@ class Threshold(Op):
 
 
 class Pow(Op):
+    """Power operator: y = x^N
+    
+    Args:
+        x (T): base
+        N (int): power
+    """
     
     def __init__(self, x: T, power: int):
         
@@ -608,22 +669,38 @@ class Pow(Op):
 
 
 class Optimizer:
+    """Base class for optimizers."""
     
     def minimize(self, t: T):
         pass
 
 
 class SGD(Optimizer):
+    """Gradient descent optimizer.
+
+    NOTE for debuggers: 
+        `SGD` recursively backpropagates in depth-first fashion resulting in potential 
+        redundant gradient propagations. For example, if you have a graph like:
+        X1 -> X2 -> ... -> Xn
+        Xn -> Y1
+        Xn -> Y2
+        (Y1, Y2) -> Z
+        Then backpropagating from Z down results in 2n+3 backpropagation step since
+        gradients are backpropagated down X1...Xn twice. If you want to maximize efficiency
+        you will have to manually take the mean of dXn from Y1 and Y2. Innefficient: Yes. Works: Yes*
+        (as long as you're not tracking state outside of the jnp.T.reverse_grad function)
+        Once static execution mode is implemented, the optimizer will be able to propagate 
+        gradients in a propper topological order. However, the main thesis of gradient descent 
+        is about *small* updates to the parameters, so it's not too *big* a deal. ;)
+
+    Args:
+        lr (float, optional): Learning rate. Multiplied by gradients before applying
+            them to Var nodes in `bprop` method. Defaults to 0.001.
+        debug (bool, optional): Whether to print out debug information during backpropagation. 
+            You can change this later by setting `self.debug`. Defaults to False.
+    """
     
     def __init__(self, lr: float = 0.001, debug: bool = False):
-        """Gradient descent optimizer.
-
-        Args:
-            lr (float, optional): Learning rate. Multiplied by gradients before applying
-                them to Var nodes in `bprop` method. Defaults to 0.001.
-            debug (bool, optional): Whether to print out debug information during backpropagation. 
-                You can change this later by setting `self.debug`. Defaults to False.
-        """
         
         self.lr = lr
         self.debug = debug
@@ -638,21 +715,15 @@ class SGD(Optimizer):
         self.bprop(t_out=t, output_grad=-np.ones_like(t.val))
         
     def bprop(self, t_out: T, output_grad: V):
-        """Recursively backpropagates `output_grad` starting from `t_out`.
+        """Backpropagates `output_grad` down `t_out`.
+        If t_out is an `Op`, this method recursively backpropagates down
+            each of t_out's parents in depth-first fashion.
+        If t_out is a `Var`, this method applies `self.lr*output_grad` to the Var.
 
         Args:
             t_out (T): Output tensor to start backpropagation from.
             output_grad (V): Gradient of output tensor. You should make this
                 a one's array if you're just computing partial derivatives.
-
-        NOTE for debuggers:
-            I'm sorry you're reading this. This optimizer takes a depth-first search of the graph
-            resulting in redundant gradient propagations. Innefficient: Yes. Works: Yes* 
-            (as long as you're not tracking state outside of the jnp.T.reverse_grad function)
-
-            Once static execution mode is implemented, the optimizer will be able to propagate 
-            gradients in a propper topological order. However, the main thesis of gradient descent 
-            is about *small* updates to the parameters, so it's not too *big* a deal. ;)
         """
         
         if self.debug:
