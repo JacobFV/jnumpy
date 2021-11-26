@@ -259,7 +259,7 @@ hparams = dict(
     hidden_size=256,  # hidden layer size for RealDQN
     categorical_hidden_size=32,  # hidden layer size for CategoricalDQN
     activation=jnp.Relu,  # activation function for networks
-    optimizer=jnp.SGD(1e-3),  # optimizer for networks
+    optimizer=jnp.SGD(1e-3, True),  # optimizer for networks
     epsilon_start=1.0,  # Starting value for epsilon
     epsilon_decay=0.95,  # Decay rate for epsilon per epoch
     min_epsilon=0.01,  # Final value for epsilon
@@ -270,7 +270,7 @@ hparams = dict(
     train_win_length=4,  # Number of pieces in a row needed to win in training
     test_win_length=6,  # Number of pieces in a row needed to win in testing
     min_steps_per_epoch=10,  # Minimum number of steps per epoch
-    batch_size=32,  # Number of samples per training batch
+    batch_size=7,  # Number of samples per training batch
     num_steps_replay_coef=0.5,  # How much to upweight longer episodes
     success_replay_coef=0.5,  # How much to upweight successful experience
     age_replay_coef=0.5,  # How much to downweight older trajectories
@@ -281,10 +281,10 @@ encoder = jnn.Sequential(
     [
         jnn.Conv2D(32, 3, 2, "same", jnp.Relu),
         jnn.Conv2D(64, 3, 2, "same", jnp.Relu),
-        jnn.AxisMaxPooling(1),
+        jnn.GlobalMaxPooling(1),
     ]
 )  # [B, H, W, 2] -> [B, W, d_enc]
-agent = RealDQN(hparams["board_size"], encoder, hparams)
+agent = jrl.agents.RealDQN(hparams["board_size"], encoder, hparams)
 
 self_play_agents = dict(
     Bob=agent,

@@ -25,13 +25,18 @@ class Layer:
     override the `__call__` method.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, name: str = "Layer") -> None:
+        self.name = jnp.NameScope.get_name("LAYER_NAMES", name)
         self._built = False
-        self._loss = jnp.Var(np.zeros(()), trainable=False)
+        self._reset_loss()
 
     @property
     def loss(self) -> jnp.T:
         return self._loss
+
+    def _reset_loss(self):
+        with jnp.NameScope(self.name):
+            self._loss = jnp.Var(0.0, name=f"initial_loss")
 
     @property
     def trainable_variables(self) -> List[jnp.T]:
@@ -57,14 +62,16 @@ class Layer:
         pass
 
     def __call__(self, X_T: jnp.T) -> jnp.T:
-        if not self._built:
-            self.build(X_T.shape)
-            self._built = True
+        with jnp.NameScope(self.name):
+            if not self._built:
+                self.build(X_T.shape)
+                self._built = True
 
-        # reset the regularization loss
-        self._loss = jnp.Var(0.0, trainable=False)
+        with jnp.NameScope(self.name, "forward"):
+            # reset the loss for downstream regularizers to accumulate onto
+            self._reset_loss()
 
-        return self.forward(X_T)
+            return self.forward(X_T)
 
 
 class Dense(Layer):
@@ -92,13 +99,14 @@ class Dense(Layer):
     def __init__(
         self,
         units: int,
-        activation: Op = None,
+        activation: jnp.Op = None,
         use_bias: bool = True,
         activity_L2: float = None,
         weight_L2: float = None,
         bias_L2: float = None,
+        name: str = "Dense",
     ):
-        super(Dense, self).__init__()
+        super().__init__(name=name)
 
         if activation is None:
             activation = jnp.Linear
@@ -108,14 +116,14 @@ class Dense(Layer):
         self.use_bias = use_bias
 
         self.activity_L2 = (
-            jnp.Var(activity_L2, trainable=False) if activity_L2 is not None else None
+            jnp.Var(activity_L2, name="activity_L2")
+            if activity_L2 is not None
+            else None
         )
         self.weight_L2 = (
-            jnp.Var(weight_L2, trainable=False) if weight_L2 is not None else None
+            jnp.Var(weight_L2, name="weight_L2") if weight_L2 is not None else None
         )
-        self.bias_L2 = (
-            jnp.Var(bias_L2, trainable=False) if bias_L2 is not None else None
-        )
+        self.bias_L2 = jnp.Var(bias_L2, name="bias_L2") if bias_L2 is not None else None
 
     @property
     def trainable_variables(self) -> List[jnp.T]:
@@ -123,10 +131,10 @@ class Dense(Layer):
 
     def build(self, input_shape):
         W = np.random.uniform(low=-0.05, high=0.05, size=(input_shape[-1], self.units))
-        self.W_T = jnp.Var(val=W, trainable=True)
+        self.W_T = jnp.Var(val=W, trainable=True, name="weights")
         if self.use_bias:
             B = np.random.uniform(low=-0.05, high=0.05, size=(1, self.units))
-            self.B_T = jnp.Var(val=B, trainable=True)
+            self.B_T = jnp.Var(val=B, trainable=True, name="bias")
 
     def forward(self, X_T: jnp.T) -> jnp.T:
 
@@ -199,8 +207,9 @@ class Conv2D(Layer):
         activity_L2: float = None,
         weight_L2: float = None,
         bias_L2: float = None,
+        name: str = "Conv",
     ):
-        super(Conv2D, self).__init__()
+        super().__init__(name=name)
 
         if activation is None:
             activation = jnp.Linear
@@ -223,14 +232,14 @@ class Conv2D(Layer):
         self.use_bias = use_bias
 
         self.activity_L2 = (
-            jnp.Var(activity_L2, trainable=False) if activity_L2 is not None else None
+            jnp.Var(activity_L2, name="activity_L2")
+            if activity_L2 is not None
+            else None
         )
         self.weight_L2 = (
-            jnp.Var(weight_L2, trainable=False) if weight_L2 is not None else None
+            jnp.Var(weight_L2, name="weight_L2") if weight_L2 is not None else None
         )
-        self.bias_L2 = (
-            jnp.Var(bias_L2, trainable=False) if bias_L2 is not None else None
-        )
+        self.bias_L2 = jnp.Var(bias_L2, name="bias_L2") if bias_L2 is not None else None
 
     @property
     def trainable_variables(self) -> List[jnp.T]:
@@ -245,11 +254,11 @@ class Conv2D(Layer):
                 self.filters,
             ),
         )
-        self.W_T = jnp.Var(val=W, trainable=True)
+        self.W_T = jnp.Var(val=W, trainable=True, name="weights")
 
         if self.use_bias:
             B = np.random.uniform(low=-0.05, high=0.05, size=(1, self.filters))
-            self.B_T = jnp.Var(val=B, trainable=True)
+            self.B_T = jnp.Var(val=B, trainable=True, name="bias")
 
     def forward(self, X_T: jnp.T) -> jnp.T:
 
@@ -341,9 +350,11 @@ class Conv2D(Layer):
         return Y_T
 
 
-class AxisMaxPooling(Layer):
-    def __init__(self, axis: int):
-        super(AxisMaxPooling, self).__init__()
+class GlobalMaxPooling(Layer):
+    """Performs max pooling along an entire axis."""
+
+    def __init__(self, axis: int, name: str = "GlobalMaxPooling"):
+        super().__init__(name=name)
         self.axis = axis
 
     def forward(self, X_T: jnp.T) -> jnp.T:
@@ -351,8 +362,14 @@ class AxisMaxPooling(Layer):
 
 
 class Lambda(Layer):
-    def __init__(self, fn: Callable[[jnp.T], jnp.T]):
-        super(Lambda, self).__init__()
+    """Lambda layer.
+
+    NOTE: Unlike keras' lambda layer, the lambda function here
+    recieves the full tensor (batch axis included) and currently
+    all transforms must be performed using jnumpy core ops."""
+
+    def __init__(self, fn: Callable[[jnp.T], jnp.T], name: str = "Lambda"):
+        super().__init__(name=name)
         self.fn = fn
 
     def forward(self, X_T: jnp.T) -> jnp.jnp.T:
@@ -370,8 +387,8 @@ class Flatten(Layer):
 
     """
 
-    def __init__(self):
-        super(Flatten, self).__init__()
+    def __init__(self, name: str = "Flatten"):
+        super().__init__(name=name)
 
     @property
     def trainable_variables(self) -> List[jnp.T]:
@@ -408,20 +425,24 @@ class Sequential(Layer):
         >>> conv_net(img_T)
     """
 
-    def __init__(self, layers):
+    def __init__(self, layers, name="Model"):
         self.layers = layers
-        super(Sequential, self).__init__()
+        name = jnp.NameScope.get_name("MODEL_NAMES", name)
+        super().__init__(name=name)
 
     def forward(self, X_T: jnp.T) -> jnp.T:
-        for layer in self.layers:
-            X_T = layer(X_T)
+        with jnp.NameScope(self.name, "forward"):
+            for layer in self.layers:
+                X_T = layer(X_T)
         return X_T
 
     @property
     def loss(self) -> jnp.T:
-        return functools.reduce(
-            lambda x, y: x + y, [layer.loss for layer in self.layers]
-        )
+        with jnp.NameScope(self.name, "reg_loss"):
+            loss = functools.reduce(
+                lambda x, y: x + y, [layer.loss for layer in self.layers]
+            )
+        return loss
 
     @property
     def trainable_variables(self) -> List[jnp.T]:

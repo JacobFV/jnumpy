@@ -18,8 +18,9 @@ class Agent:
     """Base class for agents.
     See docstrings on `forward`, `reward`, `train` for more information."""
 
-    def __init__(self, policy: Callable):
+    def __init__(self, policy: Callable, name: str = "Agent"):
         self.policy = policy
+        self.name = jnp.NameScope.get_name("AGENT_NAMES", name)
 
     def forward(self, step: BatchStep) -> np.ndarray:
         """Generates an action for a given observation using `self.policy`.
@@ -35,7 +36,9 @@ class Agent:
         Returns:
             np.ndarray: The action to take
         """
-        return self.policy(step.next_obs)
+        with jnp.NameScope(self.name, "forward"):
+            action = self.policy(step.next_obs)
+        return action
 
     def reward(self, traj: Traj) -> float:
         """Evaluates the cumulative reward for your agent as the sum of
@@ -58,7 +61,16 @@ class Agent:
         Args:
             traj (Traj): timestep trajectory.
         """
-        raise NotImplemented("Method `train` must be implemented by subclass")
+        with jnp.NameScope(self.name, "train"):
+            self._train(traj)
+
+    def _train(self, traj: Traj):
+        """Private method implemented by subclasses to train on a sequence of Timestep's.
+
+        Args:
+            traj (Traj): timestep trajectory.
+        """
+        pass
 
 
 class RandomAgent(Agent):
@@ -74,22 +86,14 @@ class RandomAgent(Agent):
         num_actions (int): The number of actions the agent can take.
     """
 
-    def __init__(self, num_actions: int):
-        super(RandomAgent, self).__init__(policy=self._policy)
+    def __init__(self, num_actions: int, name: str = "RandomAgent"):
+        super(RandomAgent, self).__init__(policy=self._policy, name=name)
         self.num_actions = num_actions
 
     def _policy(self, obs: np.ndarray) -> np.ndarray:
         choices = np.random.randint(0, self.num_actions, (obs.shape[0],))
         onehots = np.eye(self.num_actions)[choices]
         return onehots
-
-    def train(self, traj: Traj):
-        """Train your agent on a sequence of Timestep's.
-
-        Args:
-            traj (Traj): timestep trajectory.
-        """
-        pass
 
 
 class RealDQN(Agent):
@@ -115,7 +119,7 @@ class RealDQN(Agent):
         >>> test_encoder = jnn.Sequential([
                 jnn.Conv2D(32, 3, 2, 'same', jnp.Relu),
                 jnn.Conv2D(64, 3, 2, 'same', jnp.Relu),
-                jnn.AxisMaxPooling(1),
+                jnn.GlobalMaxPooling(1),
             ])  # [B, H, W, 2] -> [B, W, d_enc]
         >>> test_step = Step(
                 obs=np.random.rand(test_batch_size, test_num_actions, test_num_actions, 2),
@@ -142,20 +146,30 @@ class RealDQN(Agent):
         hparams (dict): Hyperparameters.
     """
 
-    def __init__(self, num_actions: int, encoder: jnn.Layer, hparams: dict):
+    def __init__(
+        self,
+        num_actions: int,
+        encoder: jnn.Layer,
+        hparams: dict,
+        name: str = "RealDQNAgent",
+    ):
+
+        super(RealDQN, self).__init__(policy=self._policy, name=name)
 
         self.num_actions = num_actions
         self.encoder = encoder  # [B, H, W, C] -> [B, W, d_enc]
-        self.neck = jnn.Flatten()
+        self.neck = jnn.Flatten(name="flatten")
         self.head = jnn.Sequential(
             [
-                jnn.Dense(hparams["hidden_size"], hparams["activation"]),
-                jnn.Dense(1, jnp.Linear),
+                jnn.Dense(
+                    hparams["hidden_size"],
+                    hparams["activation"],
+                    name="hidden",
+                ),
+                jnn.Dense(1, jnp.Linear, name="output"),
             ]
         )  # [B, L+|A|] -> [B, 1]
         self.hparams = hparams
-
-        super(RealDQN, self).__init__(policy=self._policy)
 
     def _policy(self, obs: np.ndarray) -> np.ndarray:
 
@@ -182,7 +196,7 @@ class RealDQN(Agent):
 
             # prepare action
             action_T = jnp.Var(
-                np.repeat(np.array([action_index])[None, :], repeats=B, axis=0)
+                np.repeat(np.array([action_index])[None, :], repeats=B, axis=0),
             )  # [B, 1]
 
             # run the network
@@ -197,7 +211,7 @@ class RealDQN(Agent):
         onehots = np.eye(self.num_actions)[action_indeces]  # [B, self.num_actions]
         return onehots
 
-    def train(self, traj: Traj):
+    def _train(self, traj: Traj):
         """Train your agent on a sequence of Timestep's.
 
         Args:
@@ -205,16 +219,16 @@ class RealDQN(Agent):
         """
 
         optimizer = self.hparams["optimizer"]
-        discount_T = jnp.Var(self.hparams["discount"], trainable=False)  # []
+        discount_T = jnp.Var(self.hparams["discount"], name="discount")  # []
         for step in traj:
 
-            obs_T = jnp.Var(step.obs, trainable=False)  # [B, H, W, 2]
-            action_T = jnp.Var(step.action, trainable=False)  # [B, A]
-            next_obs_T = jnp.Var(step.next_obs, trainable=False)  # [B, H, W, 2]
-            action_next_T = jnp.Var(
-                self.policy(step.next_obs), trainable=False
+            obs_T = jnp.Var(step.obs, name="obs")  # [B, H, W, 2]
+            action_T = jnp.Var(step.action, name="action")  # [B, A]
+            next_obs_T = jnp.Var(step.next_obs, name="next_obs")  # [B, H, W, 2]
+            next_action_T = jnp.Var(
+                self.policy(step.next_obs), name="next_action"
             )  # [B, A]
-            r_T = jnp.Var(step.reward, trainable=False)  # [B]
+            r_T = jnp.Var(step.reward, name="reward")  # [B]
 
             # compute previous Q value using the actual (not necesarily optimal) action selected
             enc_T = self.neck(self.encoder(obs_T))  # [B, W*d_enc]
@@ -225,7 +239,7 @@ class RealDQN(Agent):
 
             # compute the maximum possible next step Q-value
             next_enc_T = self.neck(self.encoder(next_obs_T))  # [B, W*d_enc]
-            next_cat_T = jnp.Concat([next_enc_T, action_next_T], axis=1)  # [B, d_enc+A]
+            next_cat_T = jnp.Concat([next_enc_T, next_action_T], axis=1)  # [B, d_enc+A]
             Qnext_T = self.head(next_cat_T)[:, 0]  # [B]
             reg_loss_next_T = self.encoder.loss + self.head.loss  # []
 
@@ -287,7 +301,7 @@ class CategoricalDQN(Agent):
         >>> test_encoder = jnn.Sequential([
                 jnn.Conv2D(32, 3, 2, 'same', jnp.Relu),
                 jnn.Conv2D(64, 3, 2, 'same', jnp.Relu),
-                jnn.AxisMaxPooling(1),
+                jnn.GlobalMaxPooling(1),
             ])  # [B, H, W, 2] -> [B, W, d_enc]
         >>> test_step = Step(
                 obs=np.random.rand(test_batch_size, test_num_actions, test_num_actions, 2),
@@ -344,26 +358,25 @@ class CategoricalDQN(Agent):
             return np.eye(self.num_actions)[indeces]
 
         # Otherwise estimate Q-values for all actions
-        obs_T = Var(obs, trainable=False)  # [B, H, W, C]
+        obs_T = jnp.Var(obs)  # [B, H, W, C]
         enc_T = self.encoder(obs_T)  # [B, W, d_enc]
         qvals_T = self.head(enc_T)  # [B, W, 1]
         return qvals_T[..., 0].val  # [B, W]
 
-    def train(self, traj: Traj):
+    def _train(self, traj: Traj):
         """Train your agent on a sequence of Timestep's.
 
         Args:
             traj (Traj): batched timestep trajectory.
         """
-
         optimizer = self.hparams["optimizer"]
         discount_T = jnp.Var(self.hparams["discount"], trainable=False)  # []
         for step in traj:
 
-            obs_T = jnp.Var(step.obs, trainable=False)  # [B, H, W, 2]
+            obs_T = jnp.Var(step.obs, name="obs")  # [B, H, W, 2]
             action_indeces = np.argmax(step.action, axis=1)  # [B]
-            obs_next_T = jnp.Var(step.next_obs, trainable=False)  # [B, H, W, 2]
-            r_T = jnp.Var(step.reward, trainable=False)  # [B]
+            next_obs_T = jnp.Var(step.next_obs, name="next_obs")  # [B, H, W, 2]
+            r_T = jnp.Var(step.reward, name="reward")  # [B]
 
             # compute previous Q value using the actual (not necesarily optimal) action selected
             enc_T = self.encoder(obs_T)  # [B, W, d_enc]
@@ -372,7 +385,7 @@ class CategoricalDQN(Agent):
             reg_loss_now_T = self.encoder.loss + self.head.loss  # []
 
             # compute the maximum possible next step Q-value
-            enc_next_T = self.encoder(obs_next_T)  # [B, W, d_enc]
+            enc_next_T = self.encoder(next_obs_T)  # [B, W, d_enc]
             qvals_T = self.head(enc_next_T)[..., 0]  # [B, W]
             Q_next_T = jnp.ReduceMax(qvals_T, axis=1)  # [B]
             # equivalent to: Q_next_T = ReduceMax(qvals_T, axis=1)

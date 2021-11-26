@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Tuple, List, Union, Optional
 
 import numpy as np
+from numpy.lib.arraysetops import isin
 
 
 V = np.array  # Value type
@@ -25,6 +26,80 @@ class ExecutionMode:
 EXECUTION_MODE = ExecutionMode.EAGER
 
 
+class NameScope:
+
+    _GLOBAL_PREFIXES = list()
+    _NAMES_REGISTRY = dict()
+
+    @staticmethod
+    def get_name(namespace, name):
+        """Gets a unique and name-scoped identifier name.
+        Makes `name` unique by adding or increasing its integer suffix.
+        Separates prefixes from the body using underscores as appropriate.
+
+        Examples:
+            >>> make_unique('tensor', 'Add')
+            ... 'Add'
+            >>> make_unique('tensor', 'Add')
+            ... 'Add1'
+            >>> make_unique('tensor', 'Add')
+            ... 'Add2'
+            >>> make_unique('tensor', 'Add1')
+            ... 'Add3'
+            >>> make_unique('tensor', 'Sub')
+            ... 'Sub'
+
+        Args:
+            namespace (str): What namespace to track uniqueness under.
+            name (str): The name to make unique
+
+        Returns:
+            str: `name` but with the suffix possibly changed.
+        """
+        # get or make namespace
+        if namespace not in NameScope._NAMES_REGISTRY:
+            NameScope._NAMES_REGISTRY[namespace] = dict()
+        namespace_registry = NameScope._NAMES_REGISTRY[namespace]
+
+        # add prefixes
+        for prefix in NameScope._GLOBAL_PREFIXES:
+            name = f"{prefix}:{name}"
+
+        # make `name` unique
+        basename = name.strip("0123456789")
+        name_ext = name[len(basename) :]
+
+        # maybe create slot to store new `basename`
+        if basename not in namespace_registry:
+            namespace_registry[basename] = list()
+
+        # if the variable name is truely unique, just store it and move on
+        if name == basename and -1 not in namespace_registry[basename]:
+            # special case, no extension flag
+            namespace_registry[basename].append(-1)
+            return name
+
+        # otherwise find the next free integer extension to `basename`
+        if len(name_ext) == 0:
+            name_ext = 1
+        name_ext = int(name_ext)
+        while name_ext in namespace_registry[basename]:
+            name_ext += 1
+        namespace_registry[basename].append(name_ext)
+        return f"{basename}{name_ext}"
+
+    def __init__(self, *prefixes):
+        self.prefixes = prefixes
+
+    def __enter__(self):
+        for prefix in self.prefixes:
+            NameScope._GLOBAL_PREFIXES.append(prefix)
+
+    def __exit__(self, *args, **kwargs):
+        for prefix in self.prefixes:
+            NameScope._GLOBAL_PREFIXES.pop()
+
+
 class T:
     """Tensor.
 
@@ -37,7 +112,9 @@ class T:
             base __init__ function.
     """
 
-    def __init__(self, val: Optional[V] = None):
+    def __init__(self, val: Optional[V] = None, name: str = "T"):
+
+        self.name = NameScope.get_name("TENSOR_NAMES", name)
         self.val = val
 
         if val is None:
@@ -87,11 +164,11 @@ class T:
     def T(self, axes: Tuple[int] = None):
         return eval("Transpose")(self, axes=axes)
 
-    def __repr__(self):
-        return f"Tensor({self.val})"
-
     def __str__(self):
-        return f"Tensor({self.val})"
+        return f"Tensor(name={self.name}, shape={self.shape}, {self.val})"
+
+    def __repr__(self):
+        self.__str__()
 
     def __eq__(self, other):
         return self.val == other.val
@@ -128,13 +205,15 @@ class Var(T):
             is `STATIC`. Otherwise you should supply a value.
         trainable (bool, optional): Whether the variable is trainable.
             Read by the optimizer when backpropagating gradients.
-            The default is True.
+            The default is False (Changed since jnumpy 1.0).
     """
 
-    def __init__(self, val: Optional[V] = None, trainable: bool = True):
+    def __init__(
+        self, val: Optional[V] = None, trainable: bool = False, name: str = "Var"
+    ):
 
         self.trainable = trainable
-        super().__init__(val=val)
+        super().__init__(val=val, name=name)
 
 
 class Op(T):
@@ -147,7 +226,7 @@ class Op(T):
         inputs (Tuple[T]): Tuple of input Tensors (each is only a single T).
     """
 
-    def __init__(self, *inputs: T):
+    def __init__(self, *inputs: T, name: str = "Op"):
 
         self.input_ts = inputs
 
@@ -156,7 +235,7 @@ class Op(T):
         else:
             val = None
 
-        super().__init__(val=val)
+        super().__init__(name=name, val=val)
 
     def forward(self, inputs: Vs) -> V:
         raise NotImplementedError("subclasses should implement this method")
@@ -173,7 +252,7 @@ class Transpose(Op):
         axes (Tuple[int]): Axes to transpose over
     """
 
-    def __init__(self, t: T, axes: Tuple[int] = None):
+    def __init__(self, t: T, axes: Tuple[int] = None, name: str = "Transpose"):
 
         self.forward_kwargs = dict()
         self.reverse_kwargs = dict()
@@ -182,7 +261,7 @@ class Transpose(Op):
             self.forward_kwargs["axes"] = axes
             self.reverse_kwargs["axes"] = tuple(reversed(axes))
 
-        super().__init__(t)
+        super().__init__(t, name=name)
 
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -207,11 +286,11 @@ class Reshape(Op):
         shape (Tuple[int]): New shape of the tensor
     """
 
-    def __init__(self, t: T, shape: Tuple[int]):
+    def __init__(self, t: T, shape: Tuple[int], name: str = "Reshape"):
 
         self.reshape_shape = shape
 
-        super().__init__(t)
+        super().__init__(t, name=name)
 
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -221,9 +300,11 @@ class Reshape(Op):
         return Y
 
     def reverse_grad(self, inputs: Vs, output: V, top_grad: V) -> Vs:
+        X = inputs[0]
         dY = top_grad
 
-        dX = dY.reshape(tuple(reversed(self.reshape_shape)))
+        dX = dY.reshape(X.shape)
+        # dX = dY.reshape(tuple(reversed(self.reshape_shape)))
 
         return (dX,)
 
@@ -236,12 +317,12 @@ class Concat(Op):
         axis (int, optional): Axis to concatenate along. Defaults to 0.
     """
 
-    def __init__(self, ts: List[T], axis: int = 0):
+    def __init__(self, ts: List[T], axis: int = 0, name: str = "Concat"):
 
         self.axis = axis
         self.orig_axis_lens = [t.shape[axis] for t in ts]
 
-        super().__init__(*ts)
+        super().__init__(*ts, name=name)
 
     def forward(self, inputs: Vs) -> V:
         Xs = inputs
@@ -268,13 +349,13 @@ class Index(Op):
             `None` is not allowed.
     """
 
-    def __init__(self, t: T, indices):
+    def __init__(self, t: T, indices, name: str = "Index"):
         if not isinstance(indices, tuple):
             indices = (indices,)
 
         self.indices = indices
 
-        super().__init__(t)
+        super().__init__(t, name=name)
 
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -296,10 +377,10 @@ class Index(Op):
 class ReduceSum(Op):
     """Reduce sum oeprator"""
 
-    def __init__(self, t: T, axis: int):
+    def __init__(self, t: T, axis: int, name: str = "ReduceSum"):
         self.axis = axis
 
-        super().__init__(t)
+        super().__init__(t, name=name)
 
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -322,10 +403,10 @@ class ReduceSum(Op):
 class ReduceMax(Op):
     """Differentiable max operator"""
 
-    def __init__(self, t: T, axis: int):
+    def __init__(self, t: T, axis: int, name: str = "ReduceMax"):
         self.axis = axis
 
-        super().__init__(t)
+        super().__init__(t, name=name)
 
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -351,10 +432,10 @@ class ReduceMax(Op):
 class ReduceMin(Op):
     """Differentiable min operator"""
 
-    def __init__(self, t: T, axis: int):
+    def __init__(self, t: T, axis: int, name: str = "ReduceMin"):
         self.axis = axis
 
-        super().__init__(t)
+        super().__init__(t, name=name)
 
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -381,11 +462,13 @@ class NaN2Num(Op):
     neginf < dx(dy) < posinf
     """
 
-    def __init__(self, t: T, posinf: float = 1e3, neginf: float = -1e3):
+    def __init__(
+        self, t: T, posinf: float = 1e3, neginf: float = -1e3, name: str = "NaN2Num"
+    ):
         self.posinf = posinf
         self.neginf = neginf
 
-        super().__init__(t)
+        super().__init__(t, name=name)
 
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -405,6 +488,9 @@ class NaN2Num(Op):
 class Linear(Op):
     """Linear operator: y = x"""
 
+    def __init__(self, t: T, name: str = "Linear"):
+        super().__init__(t, name=name)
+
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
 
@@ -422,6 +508,9 @@ class Linear(Op):
 
 class StopGrad(Op):
     """Stop gradient operator: y = x. dx(dy) = 0"""
+
+    def __init__(self, t: T, name: str = "StopGrad"):
+        super().__init__(t, name=name)
 
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -441,6 +530,9 @@ class StopGrad(Op):
 class Neg(Op):
     """Negation operator: y = -x"""
 
+    def __init__(self, t: T, name: str = "Neg"):
+        super().__init__(t, name=name)
+
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
 
@@ -458,6 +550,9 @@ class Neg(Op):
 
 class Add(Op):
     """Addition operator: z = x + y"""
+
+    def __init__(self, x: T, y: T, name: str = "Add"):
+        super().__init__(x, y, name=name)
 
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -479,6 +574,9 @@ class Add(Op):
 class Sub(Op):
     """Subtraction operator: z = x - y"""
 
+    def __init__(self, x: T, y: T, name: str = "Sub"):
+        super().__init__(x, y, name=name)
+
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
         Y = inputs[1]
@@ -498,6 +596,9 @@ class Sub(Op):
 
 class Mul(Op):
     """Multipulcation operator: z = xy"""
+
+    def __init__(self, x: T, y: T, name: str = "Mul"):
+        super().__init__(x, y, name=name)
 
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -521,6 +622,9 @@ class Mul(Op):
 class MatMul(Op):
     """Matrix multipulcation operator: Z = XY"""
 
+    def __init__(self, x: T, y: T, name: str = "MatMul"):
+        super().__init__(x, y, name=name)
+
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
         Y = inputs[1]
@@ -543,6 +647,9 @@ class MatMul(Op):
 class Exp(Op):
     """Exponential operator: y = e^x"""
 
+    def __init__(self, x: T, name: str = "Exp"):
+        super().__init__(x, name=name)
+
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
 
@@ -560,6 +667,11 @@ class Exp(Op):
 
 
 class Sigm(Op):
+    """Sigmoid operator: y = S(x) = 1 / (1 + e^-x)"""
+
+    def __init__(self, x: T, name: str = "Sigm"):
+        super().__init__(x, name=name)
+
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
 
@@ -579,6 +691,9 @@ class Sigm(Op):
 class Tanh(Op):
     """Hyperbolic tangent: y = tanh(x)"""
 
+    def __init__(self, x: T, name: str = "Tanh"):
+        super().__init__(x, name=name)
+
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
 
@@ -597,6 +712,9 @@ class Tanh(Op):
 
 class Relu(Op):
     """Rectified linear unit: y = ReLU(x)"""
+
+    def __init__(self, x: T, name: str = "ReLU"):
+        super().__init__(x, name=name)
 
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -619,6 +737,9 @@ class Threshold(Op):
 
     y = 1 if x >= 0
     y = 0 if x < 0"""
+
+    def __init__(self, x: T, name: str = "Threshold"):
+        super().__init__(x, name=name)
 
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -643,11 +764,11 @@ class Pow(Op):
         N (int): power
     """
 
-    def __init__(self, x: T, power: int):
+    def __init__(self, x: T, power: int, name: str = "Pow"):
 
         self.power = power
 
-        super().__init__(x)
+        super().__init__(x, name=name)
 
     def forward(self, inputs: Vs) -> V:
         X = inputs[0]
@@ -726,8 +847,8 @@ class SGD(Optimizer):
                 a one's array if you're just computing partial derivatives.
         """
 
-        if self.debug:
-            print("bprop", t_out, np.mean(output_grad), output_grad)
+        # if self.debug:
+        #     print("bprop", t_out, np.mean(output_grad))
 
         output_grad = np.nan_to_num(output_grad, posinf=10.0, neginf=-10.0)
 
@@ -736,8 +857,10 @@ class SGD(Optimizer):
             if t_out.trainable:
                 # print('output_grad', output_grad.shape)
                 if self.debug:
-                    print("t_out.val (old)", t_out.shape)
-                    print(t_out.val)
+                    print(
+                        f"{t_out.name} old shape={t_out.shape}, grad shape={output_grad.shape}"
+                    )
+                # print(t_out.val)
 
                 # yucky duct tape to handle batch size differences
                 if t_out.shape[0] == 1 and output_grad.shape[0] > 1:
@@ -745,15 +868,26 @@ class SGD(Optimizer):
 
                 t_out.val = t_out.val + (self.lr * output_grad)
                 if self.debug:
-                    print("t_out.val (new)", t_out.shape)
-                    print(t_out.val)
+                    print(f"{t_out.name} new shape={t_out.shape}")
+                    # print(t_out.val)
 
         elif isinstance(t_out, Op):
+
+            if self.debug:
+                print(
+                    f"{t_out.name} shape={t_out.shape}, grad shape={output_grad.shape}"
+                )
+
             input_grads = t_out.reverse_grad(
                 inputs=tuple(t.val for t in t_out.input_ts),
                 output=t_out.val,
                 top_grad=output_grad,
             )
+
+            if self.debug:
+                print("backpropagating down the following nodes: ")
+                for input_t, input_grad in zip(t_out.input_ts, input_grads):
+                    print(f" - {input_t.name}, output_grad.shape={input_grad.shape}")
 
             for input_t, input_grad in zip(t_out.input_ts, input_grads):
                 self.bprop(t_out=input_t, output_grad=input_grad)
