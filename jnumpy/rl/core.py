@@ -9,6 +9,7 @@ from typing import Tuple, List, Mapping, Union, Callable
 from copy import deepcopy
 
 import numpy as np
+from numpy.core.defchararray import isnumeric
 
 import jnumpy.core as jnp
 from jnumpy.rl.types import Step, BatchStep, NoBatchStep, Traj
@@ -162,7 +163,8 @@ class ReplayBuffer:
         """Samples a batched trajectory from the buffer stochastically based on:
             - the number of steps in the trajectory (num_steps_replay_coef)
             - how well the agent did in the trajectory (success_replay_coef)
-            - how long ago the trajectory was experienced (age_replay_coef)
+            - how long ago the trajectory was experienced. Positive favors newer,
+                negative favors older experiences. (age_replay_coef)
 
         Returns:
             Traj: a trajectory of batched steps experienced.
@@ -320,6 +322,8 @@ class ParallelTrainer:
         for train_epoch in range(training_epochs):
 
             # collect trajectories
+            for name in agent_names:
+                all_hparams[name]["steps"] = 0
             while any(
                 all_hparams[name]["steps"] < all_hparams[name]["min_steps_per_epoch"]
                 for name in agent_names
@@ -345,7 +349,7 @@ class ParallelTrainer:
                 collect_traj = all_hparams[name]["buffer"].trajs[agent_epoch]
                 all_hparams[name]["history"][agent_epoch] = {
                     "epoch": agent_epoch,
-                    "agent": deepcopy(agents[name]),
+                    "agent": agents[name],
                     "all_agents": agents,
                     "env": env,
                     "test_env": test_env,
@@ -372,7 +376,10 @@ class PrintCallback:
 
     def __call__(self, data: Mapping[str, any]):
         for key in self.keys:
-            print(f"{key}: {data[key]}", end="\t")
+            if isinstance(data[key], float):
+                print(f"{key}: {data[key]:+6.4f}", end="\t")
+            else:
+                print(f"{key}: {data[key]}", end="\t")
         print()
 
 

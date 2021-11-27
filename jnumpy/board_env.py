@@ -258,7 +258,7 @@ class HardwiredConnect4Agent(jrl.Agent):
 
 
 hparams = dict(
-    hidden_size=256,  # hidden layer size for RealDQN
+    hidden_size=32,  # hidden layer size for RealDQN
     categorical_hidden_size=32,  # hidden layer size for CategoricalDQN
     activation=jnp.Relu,  # activation function for networks
     optimizer=jnp.SGD(1e-3),  # optimizer for networks
@@ -267,31 +267,35 @@ hparams = dict(
     min_epsilon=0.01,  # Final value for epsilon
     discount=0.95,  # Discount factor
     epoch=0,  # Current epoch
+    batch_size=8,  # Number of samples per training batch
+    train_batch_size=64,  # Batch size for training
     board_size=8,  # Board size
     train_win_length=4,  # Number of pieces in a row needed to win in training
     test_win_length=6,  # Number of pieces in a row needed to win in testing
     min_steps_per_epoch=30,  # Minimum number of steps per epoch
-    batch_size=4,  # Number of samples per training batch
     num_steps_replay_coef=0.5,  # How much to upweight longer episodes
-    success_replay_coef=0.5,  # How much to upweight successful experience
+    success_replay_coef=1.5,  # How much to upweight successful experience
     age_replay_coef=0.5,  # How much to downweight older trajectories
 )
 
 
 encoder = jnn.Sequential(
     [
-        jnn.Conv2D(32, 3, 2, "same", jnp.Relu),
-        jnn.Conv2D(64, 3, 2, "same", jnp.Relu),
+        jnn.Conv2D(8, 3, 1, "same", jnp.Relu),
+        jnn.Conv2D(8, 3, 1, "same", jnp.Relu),
         jnn.GlobalMaxPooling(1),
     ],
     name="Encoder",
 )  # [B, H, W, 2] -> [B, W, d_enc]
 
 agents = [
-    jrl.agents.RealDQN(hparams["board_size"], encoder, deepcopy(hparams), name="Alice"),
+    jrl.agents.RealDQN(hparams["board_size"], encoder, deepcopy(hparams), name="Ally"),
     jrl.agents.RealDQN(hparams["board_size"], encoder, deepcopy(hparams), name="Bob"),
+    jrl.agents.RealDQN(hparams["board_size"], encoder, deepcopy(hparams), name="Cara"),
+    jrl.agents.RealDQN(hparams["board_size"], encoder, deepcopy(hparams), name="Dan"),
+    jrl.agents.RealDQN(hparams["board_size"], encoder, deepcopy(hparams), name="Emma"),
 ]
-all_hparams = {agent.name: agent.hparams for agent in agents}
+all_hparams = {agent.name: deepcopy(agent.hparams) for agent in agents}
 
 train_env = jrl.ParallelEnv(
     hparams["batch_size"],
@@ -329,13 +333,14 @@ trainer = jrl.ParallelTrainer(
     ],
 )
 
-all_hparams = trainer.train(
-    agents=agents,
-    all_hparams=all_hparams,
-    env=train_env,
-    test_env=test_env,
-    training_epochs=10,
-)
-
-with open("hparams.json", "w") as f:
-    json.dump(hparams, f)
+for i in range(100):
+    agents_iter_list = list(itertools.combinations(agents, 2))
+    random.shuffle(agents_iter_list)
+    for agentA, agentB in agents_iter_list:
+        all_hparams = trainer.train(
+            agents=[agentA, agentB],
+            all_hparams=all_hparams,
+            env=train_env,
+            test_env=test_env,
+            training_epochs=3,
+        )

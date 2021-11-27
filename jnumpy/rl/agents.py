@@ -12,7 +12,7 @@ from numpy.core.defchararray import _use_unicode
 
 import jnumpy.core as jnp
 import jnumpy.nn as jnn
-from jnumpy.rl.types import BatchStep, Traj
+from jnumpy.rl.types import BatchStep, Traj, reshape_traj_batch_size
 
 
 class Agent:
@@ -42,8 +42,7 @@ class Agent:
         return action
 
     def reward(self, traj: Traj) -> float:
-        """Evaluates the cumulative reward for your agent as the sum of
-        individual rewards experienced.
+        """Evaluates the mean reward of the agent on a trajectory.
 
         If your agent uses intrinsic rewards, be sure to add them in here.
         Do not introduce Q-values or predicted rewards here.
@@ -54,7 +53,7 @@ class Agent:
         Returns:
             float: Cumulative (sum) reward over the entire sequence.
         """
-        return sum(step.reward for step in traj)
+        return np.mean(sum(step.reward for step in traj) / len(traj))
 
     def train(self, traj: Traj):
         """Train your agent on a sequence of Timestep's.
@@ -119,6 +118,7 @@ class RealDQN(Agent):
         - min_epsilon: minimum epsilon value.
         - epsilon_decay: epsilon decay rate.
         - epoch: current epoch.
+        - train_batch_size: batch size for training.
 
     Example:
         >>> test_batch_size = 5
@@ -143,7 +143,8 @@ class RealDQN(Agent):
                 'epsilon_decay': 0.9,
                 'min_epsilon': 0.1,
                 'discount': 0.99,
-                'epoch': 0}
+                'epoch': 0,
+                'train_batch_size': 32,}
         >>> test_agent = RealDQN(num_actions=test_num_actions, encoder=test_encoder, hparams=test_hparams)
         >>> test_agent.forward(test_step)
 
@@ -229,7 +230,7 @@ class RealDQN(Agent):
 
         optimizer = self.hparams["optimizer"]
         discount_T = jnp.Var(self.hparams["discount"], name="discount")  # []
-        for step in traj:
+        for step in reshape_traj_batch_size(traj, self.hparams["train_batch_size"]):
 
             obs_T = jnp.Var(step.obs, name="obs")  # [B, H, W, 2]
             action_T = jnp.Var(step.action, name="action")  # [B, A]
@@ -303,6 +304,7 @@ class CategoricalDQN(Agent):
         - min_epsilon: minimum epsilon value.
         - epsilon_decay: epsilon decay rate.
         - epoch: current epoch.
+        - train_batch_size: batch size for training.
 
     Example:
         >>> test_batch_size = 5
@@ -327,7 +329,8 @@ class CategoricalDQN(Agent):
                 'epsilon_decay': 0.9,
                 'min_epsilon': 0.1,
                 'discount': 0.99,
-                'epoch': 0}
+                'epoch': 0,
+                'train_batch_size': 32,}
         >>> test_agent = CategoricalDQN(num_actions=test_num_actions, encoder=test_encoder, hparams=test_hparams)
         >>> test_agent.forward(test_step)
 
@@ -381,7 +384,7 @@ class CategoricalDQN(Agent):
         """
         optimizer = self.hparams["optimizer"]
         discount_T = jnp.Var(self.hparams["discount"], trainable=False)  # []
-        for step in traj:
+        for step in reshape_traj_batch_size(traj, self.hparams["train_batch_size"]):
 
             obs_T = jnp.Var(step.obs, name="obs")  # [B, H, W, 2]
             action_indeces = np.argmax(step.action, axis=1)  # [B]

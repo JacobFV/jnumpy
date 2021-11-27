@@ -30,7 +30,7 @@ class Step:
         self.info = info
 
     @staticmethod
-    def unbatch(step: Step) -> List[Step]:
+    def unbatch(step: BatchStep) -> List[BatchStep]:
         return [
             Step(
                 obs=step.obs[i : i + 1],
@@ -71,3 +71,14 @@ BatchStep = Step
 NoBatchStep = Step
 
 Traj = List[BatchStep]
+
+
+def reshape_traj_batch_size(traj: Traj, new_batch_size: int) -> Traj:
+    """Changes the batch size - length tradeoff of a trajectory. Drops remainder"""
+    stack = []
+    for step in traj:
+        stack += Step.unbatch(step)
+    return [
+        Step.batch(stack[i : i + new_batch_size])
+        for i in range(0, len(stack), new_batch_size)
+    ]
