@@ -261,14 +261,14 @@ hparams = dict(
     hidden_size=64,  # hidden layer size for RealDQN
     categorical_hidden_size=32,  # hidden layer size for CategoricalDQN
     activation=jnp.Relu,  # activation function for networks
-    optimizer=jnp.SGD(0.0025),  # optimizer for networks
+    optimizer=jnp.SGD(0.001),  # optimizer for networks
     epsilon_start=1.0,  # Starting value for epsilon
-    epsilon_decay=0.95,  # Decay rate for epsilon per epoch
+    epsilon_decay=0.9,  # Decay rate for epsilon per epoch
     min_epsilon=0.01,  # Final value for epsilon
-    discount=0.95,  # Discount factor
+    discount=0.9,  # Discount factor
     epoch=0,  # Current epoch
     batch_size=8,  # Number of samples per training batch
-    train_batch_size=128,  # Batch size for training
+    train_batch_size=32,  # Batch size for training
     board_size=10,  # Board size
     train_win_length=4,  # Number of pieces in a row needed to win in training
     test_win_length=5,  # Number of pieces in a row needed to win in testing
@@ -282,7 +282,7 @@ hparams = dict(
 encoder = jnn.Sequential(
     [
         jnn.Conv2D(8, 3, 1, "same", jnp.Relu),
-        jnn.Conv2D(8, 3, 1, "same", jnp.Relu),
+        jnn.Conv2D(16, 3, 1, "same", jnp.Relu),
         jnn.GlobalMaxPooling(1),
     ],
     name="Encoder",
@@ -342,5 +342,5 @@ for i in range(100):
             all_hparams=all_hparams,
             env=train_env,
             test_env=test_env,
-            training_epochs=3,
+            training_epochs=1,
         )
