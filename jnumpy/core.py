@@ -18,12 +18,45 @@ Vs = Tuple[V]  # tuple of value types
 Vss = Union[V, Vs]  # single value or tuple of value types
 
 
-class ExecutionMode:
-    EAGER = 1
-    STATIC = 2  # STATIC execution mode not supported
+class Graph:
 
+    EAGER_EXECUTION = 1
+    STATIC_EXECUTION = 2  # STATIC execution mode not supported
+    EXECUTION_MODE = EAGER_EXECUTION
 
-EXECUTION_MODE = ExecutionMode.EAGER
+    @staticmethod
+    def set_execution_mode(mode: int) -> None:
+        Graph.EXECUTION_MODE = mode
+
+    @staticmethod
+    def get_execution_mode() -> int:
+        return Graph.EXECUTION_MODE
+
+    @staticmethod
+    def print_ancestors(t: T, ord: str = "post", n: int = -2) -> None:
+        """Prints all ancestors of a Tensor pre/post-ordered.
+
+        Args:
+            t (T): the Tensor to print ancestors of.
+            ord (str): the order to print the ancestors in. Either 'pre' or
+                'post'. Defaults to 'post'.
+            n (int): the number of ancestors to print. If -2, prints all.
+        """
+        if n == -1:
+            return
+        if isinstance(t, Op):
+            if ord == "pre":
+                print(
+                    f"{', '.join([input_t.name for input_t in t.input_ts])} -> {t.name} : {t.shape}"
+                )
+            for input_t in t.input_ts:
+                Graph.print_ancestors(input_t, ord, n - 1)
+            if ord == "post":
+                print(
+                    f"{', '.join([input_t.name for input_t in t.input_ts])} -> {t.name} : {t.shape}"
+                )
+        else:
+            print(f"{t.name} : {t.shape}")
 
 
 class NameScope:
@@ -62,7 +95,7 @@ class NameScope:
         namespace_registry = NameScope._NAMES_REGISTRY[namespace]
 
         # add prefixes
-        for prefix in NameScope._GLOBAL_PREFIXES:
+        for prefix in reversed(NameScope._GLOBAL_PREFIXES):
             name = f"{prefix}:{name}"
 
         # make `name` unique
@@ -212,6 +245,9 @@ class Var(T):
         self, val: Optional[V] = None, trainable: bool = False, name: str = "Var"
     ):
 
+        if not isinstance(val, np.ndarray):
+            val = np.array(val)
+
         self.trainable = trainable
         super().__init__(val=val, name=name)
 
@@ -230,7 +266,7 @@ class Op(T):
 
         self.input_ts = inputs
 
-        if EXECUTION_MODE == ExecutionMode.EAGER:
+        if Graph.get_execution_mode() == Graph.EAGER_EXECUTION:
             val = self.forward(tuple(i.val for i in inputs))
         else:
             val = None
@@ -334,7 +370,8 @@ class Concat(Op):
     def reverse_grad(self, inputs: Vs, output: V, top_grad: V) -> Vs:
         dY = top_grad
 
-        dXs = np.split(dY, self.orig_axis_lens, axis=self.axis)[0]
+        cuts = np.cumsum(self.orig_axis_lens[:-1])
+        dXs = np.split(dY, cuts, axis=self.axis)
 
         return dXs
 
@@ -419,12 +456,47 @@ class ReduceMax(Op):
         X = inputs[0]
         dY = top_grad
 
-        print(X.shape, dY.shape)
+        # transpose the input and gradients to make the max indexing on the right
+        XT = np.transpose(
+            X,
+            axes=(
+                *range(self.axis),
+                *range(self.axis + 1, X.ndim),
+                self.axis,
+            ),
+        )
+        # [leading_dims..., axis_len, trailing_dims...]
+        # -> [leading_dims..., trailing_dims, axis]
 
-        dX = np.zeros_like(X)
-        dX[np.argmax(X, axis=self.axis)] = dY
+        dYT = dY
 
-        print(dX.shape)
+        # recompute max indices
+        max_indices = np.argmax(XT, axis=-1)  # [leading_dims..., trailing_dims]
+        dXT = np.zeros_like(XT)  # [leading_dims..., trailing_dims, axis]
+
+        # completely flatten the indices and gradients
+        dXT_flat = np.reshape(dXT, (-1, X.shape[self.axis]))
+        #  [?, axis_len] = [leading_dims_1 * leading_dim_2 * ... * trailing_dim_1 * ..., axis_len]
+        max_indices_flat = np.reshape(max_indices, (-1,))
+        # [?] = [leading_dims_1 * leading_dim_2 * ... * trailing_dim_1 * ...]
+        dYT_flat = np.reshape(dYT, (-1,))
+        # [?,] = [leading_dims_1 * leading_dim_2 * ... * trailing_dim_1 * ...]
+
+        # set the gradients to the correct indices
+        dXT_flat[:, max_indices_flat] = dYT_flat
+
+        # unflatten the gradients
+        dXT = np.reshape(dXT_flat, XT.shape)
+
+        # undo the transpose
+        dX = np.transpose(
+            dXT,
+            axes=(
+                *range(self.axis),
+                dXT.ndim - 1,
+                *range(self.axis, dXT.ndim - 1),
+            ),
+        )
 
         return (dX,)
 
@@ -448,8 +520,47 @@ class ReduceMin(Op):
         X = inputs[0]
         dY = top_grad
 
-        dX = np.zeros_like(X)
-        dX[np.argmin(X, axis=self.axis)] = dY
+        # transpose the input and gradients to make the max indexing on the right
+        XT = np.transpose(
+            X,
+            axes=(
+                *range(self.axis),
+                *range(self.axis + 1, X.ndim),
+                self.axis,
+            ),
+        )
+        # [leading_dims..., axis_len, trailing_dims...]
+        # -> [leading_dims..., trailing_dims, axis]
+
+        dYT = dY
+
+        # recompute max indices
+        min_indices = np.argmin(XT, axis=-1)  # [leading_dims..., trailing_dims]
+        dXT = np.zeros_like(XT)  # [leading_dims..., trailing_dims, axis]
+
+        # completely flatten the indices and gradients
+        dXT_flat = np.reshape(dXT, (-1, X.shape[self.axis]))
+        #  [?, axis_len] = [leading_dims_1 * leading_dim_2 * ... * trailing_dim_1 * ..., axis_len]
+        min_indices_flat = np.reshape(min_indices, (-1,))
+        # [?] = [leading_dims_1 * leading_dim_2 * ... * trailing_dim_1 * ...]
+        dYT_flat = np.reshape(dYT, (-1,))
+        # [?,] = [leading_dims_1 * leading_dim_2 * ... * trailing_dim_1 * ...]
+
+        # set the gradients to the correct indices
+        dXT_flat[:, min_indices_flat] = dYT_flat
+
+        # unflatten the gradients
+        dXT = np.reshape(dXT_flat, XT.shape)
+
+        # undo the transpose
+        dX = np.transpose(
+            dXT,
+            axes=(
+                *range(self.axis),
+                dXT.ndim - 1,
+                *range(self.axis, dXT.ndim - 1),
+            ),
+        )
 
         return (dX,)
 
@@ -620,9 +731,21 @@ class Mul(Op):
 
 
 class MatMul(Op):
-    """Matrix multipulcation operator: Z = XY"""
+    """Matrix multipulcation operator: Z = XY
+
+    for sizes:
+        X: [B1..Bn, l, m],
+        Y: [m, n],
+        Z: [B1..Bn, l, n]
+    """
 
     def __init__(self, x: T, y: T, name: str = "MatMul"):
+
+        assert (
+            x.shape[-1] == y.shape[-2]
+        ), "Incompatible shapes: Inner dimensions not equal."
+        assert y.ndim == 2, "Incompatible shapes: Y must be a matrix."
+
         super().__init__(x, y, name=name)
 
     def forward(self, inputs: Vs) -> V:
@@ -634,12 +757,17 @@ class MatMul(Op):
         return Z
 
     def reverse_grad(self, inputs: Vs, output: V, top_grad: V) -> Vs:
-        X = inputs[0]  # [A,B]
-        Y = inputs[1]  # [B,C]
-        dZ = top_grad  # [A,C]
+        X = inputs[0]  # [B1..Bn, l, m]
+        Y = inputs[1]  # [m, n]
+        dZ = top_grad  # [B1..Bn, l, n]
 
-        dX = dZ @ Y.transpose()
-        dY = X.transpose() @ dZ
+        dX = dZ @ Y.T
+        # [B1..Bn, l, m] = [B1..Bn, l, n] x [n, m]
+
+        dY = np.einsum("... l m , ... l n -> ... m n ", X, dZ)
+        while dY.ndim > 2:
+            dY = np.sum(dY, axis=0)
+        # [m, n] <- [B1..Bn, l, m] x [B1..Bn, l, n]
 
         return dX, dY
 
@@ -830,8 +958,16 @@ class SGD(Optimizer):
 
     def minimize(self, t: T):
 
-        if EXECUTION_MODE == ExecutionMode.STATIC:
+        if Graph.get_execution_mode() == Graph.STATIC_EXECUTION:
             raise "STATIC execution mode not enabled"
+
+        if self.debug:
+            print(64 * "=")
+            print(
+                "minimizing loss for the following tensors (only a depth of 3 are displayed):"
+            )
+            Graph.print_ancestors(t, n=3)
+            print(64 * "=")
 
         self.bprop(t_out=t, output_grad=-np.ones_like(t.val))
 
@@ -885,7 +1021,7 @@ class SGD(Optimizer):
             )
 
             if self.debug:
-                print("backpropagating down the following nodes: ")
+                print("ancestors: ")
                 for input_t, input_grad in zip(t_out.input_ts, input_grads):
                     print(f" - {input_t.name}, output_grad.shape={input_grad.shape}")
 

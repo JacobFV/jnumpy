@@ -28,15 +28,15 @@ class Layer:
     def __init__(self, name: str = "Layer") -> None:
         self.name = jnp.NameScope.get_name("LAYER_NAMES", name)
         self._built = False
-        self._reset_loss()
+        with jnp.NameScope(self.name):
+            self._reset_loss()
 
     @property
     def loss(self) -> jnp.T:
         return self._loss
 
     def _reset_loss(self):
-        with jnp.NameScope(self.name):
-            self._loss = jnp.Var(0.0, name=f"initial_loss")
+        self._loss = jnp.Var(np.zeros(()), name=f"initial_loss")
 
     @property
     def trainable_variables(self) -> List[jnp.T]:
@@ -67,7 +67,6 @@ class Layer:
                 self.build(X_T.shape)
                 self._built = True
 
-        with jnp.NameScope(self.name, "forward"):
             # reset the loss for downstream regularizers to accumulate onto
             self._reset_loss()
 
@@ -286,6 +285,7 @@ class Conv2D(Layer):
                     jnp.Var(np.zeros((B, pad_bottom, W_orig, C)), trainable=False),
                 ],
                 axis=1,
+                name="PadHeight",
             )
 
             # pad width
@@ -302,6 +302,7 @@ class Conv2D(Layer):
                     ),
                 ],
                 axis=2,
+                name="PadWidth",
             )
 
         elif self.padding == "valid":
@@ -425,20 +426,19 @@ class Sequential(Layer):
         >>> conv_net(img_T)
     """
 
-    def __init__(self, layers, name="Model"):
+    def __init__(self, layers, name="Sequential"):
         self.layers = layers
         name = jnp.NameScope.get_name("MODEL_NAMES", name)
         super().__init__(name=name)
 
     def forward(self, X_T: jnp.T) -> jnp.T:
-        with jnp.NameScope(self.name, "forward"):
-            for layer in self.layers:
-                X_T = layer(X_T)
+        for layer in self.layers:
+            X_T = layer(X_T)
         return X_T
 
     @property
     def loss(self) -> jnp.T:
-        with jnp.NameScope(self.name, "reg_loss"):
+        with jnp.NameScope(self.name):
             loss = functools.reduce(
                 lambda x, y: x + y, [layer.loss for layer in self.layers]
             )

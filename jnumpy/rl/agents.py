@@ -8,6 +8,7 @@ import random
 from typing import Tuple, List, Mapping, Union, Callable
 
 import numpy as np
+from numpy.core.defchararray import _use_unicode
 
 import jnumpy.core as jnp
 import jnumpy.nn as jnn
@@ -36,7 +37,7 @@ class Agent:
         Returns:
             np.ndarray: The action to take
         """
-        with jnp.NameScope(self.name, "forward"):
+        with jnp.NameScope(f"{self.name}.forward()"):
             action = self.policy(step.next_obs)
         return action
 
@@ -61,7 +62,7 @@ class Agent:
         Args:
             traj (Traj): timestep trajectory.
         """
-        with jnp.NameScope(self.name, "train"):
+        with jnp.NameScope(f"{self.name}.train()"):
             self._train(traj)
 
     def _train(self, traj: Traj):
@@ -71,6 +72,12 @@ class Agent:
             traj (Traj): timestep trajectory.
         """
         pass
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    def __str__(self) -> str:
+        return self.name
 
 
 class RandomAgent(Agent):
@@ -158,7 +165,7 @@ class RealDQN(Agent):
 
         self.num_actions = num_actions
         self.encoder = encoder  # [B, H, W, C] -> [B, W, d_enc]
-        self.neck = jnn.Flatten(name="flatten")
+        self.neck = jnn.Flatten(name="neck")
         self.head = jnn.Sequential(
             [
                 jnn.Dense(
@@ -167,11 +174,12 @@ class RealDQN(Agent):
                     name="hidden",
                 ),
                 jnn.Dense(1, jnp.Linear, name="output"),
-            ]
+            ],
+            name="head",
         )  # [B, L+|A|] -> [B, 1]
         self.hparams = hparams
 
-    def _policy(self, obs: np.ndarray) -> np.ndarray:
+    def _policy(self, obs: np.ndarray, use_epsilon: bool = True) -> np.ndarray:
 
         B = obs.shape[0]
 
@@ -181,7 +189,7 @@ class RealDQN(Agent):
             * self.hparams["epsilon_decay"] ** self.hparams["epoch"]
         )
         epsilon = max(epsilon, self.hparams["min_epsilon"])
-        if random.random() < epsilon:
+        if use_epsilon and random.random() < epsilon:
             indeces = np.random.randint(0, self.num_actions, (B,))
             return np.eye(self.num_actions)[indeces]
 
@@ -195,12 +203,13 @@ class RealDQN(Agent):
         for action_index in range(self.num_actions):
 
             # prepare action
+            action_enc = np.eye(self.num_actions)[action_index]  # [num_actions]
             action_T = jnp.Var(
-                np.repeat(np.array([action_index])[None, :], repeats=B, axis=0),
+                np.repeat(action_enc[None, :], repeats=B, axis=0),
             )  # [B, 1]
 
             # run the network
-            cat_T = jnp.Concat([enc_T, action_T], axis=1)  # [B, W*d_enc+A]
+            cat_T = jnp.Concat([enc_T, action_T], axis=1)  # [B, W*d_enc+num_actions]
             q_T = self.head(cat_T)  # [B, 1]
 
             # store q-values
@@ -208,7 +217,7 @@ class RealDQN(Agent):
 
         # select the action with the highest Q-value
         action_indeces = np.argmax(q_vals, axis=1)  # [B]
-        onehots = np.eye(self.num_actions)[action_indeces]  # [B, self.num_actions]
+        onehots = np.eye(self.num_actions)[action_indeces]  # [B, num_actions]
         return onehots
 
     def _train(self, traj: Traj):
@@ -226,7 +235,8 @@ class RealDQN(Agent):
             action_T = jnp.Var(step.action, name="action")  # [B, A]
             next_obs_T = jnp.Var(step.next_obs, name="next_obs")  # [B, H, W, 2]
             next_action_T = jnp.Var(
-                self.policy(step.next_obs), name="next_action"
+                self.policy(step.next_obs, use_epsilon=False),
+                name="next_action",
             )  # [B, A]
             r_T = jnp.Var(step.reward, name="reward")  # [B]
 
@@ -235,7 +245,6 @@ class RealDQN(Agent):
             cat_T = jnp.Concat([enc_T, action_T], axis=1)  # [B, d_enc+A]
             Qnow_T = self.head(cat_T)[:, 0]  # [B]
             reg_loss_now_T = self.encoder.loss + self.head.loss  # []
-            #                       `int`             `Var`
 
             # compute the maximum possible next step Q-value
             next_enc_T = self.neck(self.encoder(next_obs_T))  # [B, W*d_enc]
@@ -332,12 +341,13 @@ class CategoricalDQN(Agent):
 
         self.num_actions = num_actions
         self.encoder = encoder  # [B, H, W, C] -> [B, W, d_enc]
-        self.neck = jnn.Flatten()
+        self.neck = jnn.Flatten(name="neck")
         self.head = jnn.Sequential(
             [
                 jnn.Dense(hparams["categorical_hidden_size"], hparams["activation"]),
                 jnn.Dense(1, jnp.Linear),
-            ]
+            ],
+            name="head",
         )  # [B, W, d_enc] -> [B, A, 1]
         self.hparams = hparams
 

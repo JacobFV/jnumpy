@@ -3,6 +3,8 @@ from __future__ import annotations
 import math, random, time, datetime
 import pickle, itertools, functools
 from typing import Tuple, List, Mapping, Optional, Union, NamedTuple, Callable
+from copy import deepcopy
+import json
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -259,18 +261,17 @@ hparams = dict(
     hidden_size=256,  # hidden layer size for RealDQN
     categorical_hidden_size=32,  # hidden layer size for CategoricalDQN
     activation=jnp.Relu,  # activation function for networks
-    optimizer=jnp.SGD(1e-3, True),  # optimizer for networks
+    optimizer=jnp.SGD(1e-3),  # optimizer for networks
     epsilon_start=1.0,  # Starting value for epsilon
     epsilon_decay=0.95,  # Decay rate for epsilon per epoch
     min_epsilon=0.01,  # Final value for epsilon
-    discount=0.99,  # Discount factor
+    discount=0.95,  # Discount factor
     epoch=0,  # Current epoch
-    epochs=2,  # Number of training epochs
     board_size=8,  # Board size
     train_win_length=4,  # Number of pieces in a row needed to win in training
     test_win_length=6,  # Number of pieces in a row needed to win in testing
-    min_steps_per_epoch=10,  # Minimum number of steps per epoch
-    batch_size=7,  # Number of samples per training batch
+    min_steps_per_epoch=30,  # Minimum number of steps per epoch
+    batch_size=4,  # Number of samples per training batch
     num_steps_replay_coef=0.5,  # How much to upweight longer episodes
     success_replay_coef=0.5,  # How much to upweight successful experience
     age_replay_coef=0.5,  # How much to downweight older trajectories
@@ -282,14 +283,15 @@ encoder = jnn.Sequential(
         jnn.Conv2D(32, 3, 2, "same", jnp.Relu),
         jnn.Conv2D(64, 3, 2, "same", jnp.Relu),
         jnn.GlobalMaxPooling(1),
-    ]
+    ],
+    name="Encoder",
 )  # [B, H, W, 2] -> [B, W, d_enc]
-agent = jrl.agents.RealDQN(hparams["board_size"], encoder, hparams)
 
-self_play_agents = dict(
-    Bob=agent,
-    Alice=agent,
-)
+agents = [
+    jrl.agents.RealDQN(hparams["board_size"], encoder, deepcopy(hparams), name="Alice"),
+    jrl.agents.RealDQN(hparams["board_size"], encoder, deepcopy(hparams), name="Bob"),
+]
+all_hparams = {agent.name: agent.hparams for agent in agents}
 
 train_env = jrl.ParallelEnv(
     hparams["batch_size"],
@@ -310,11 +312,30 @@ test_env = jrl.ParallelEnv(
 )
 
 trainer = jrl.ParallelTrainer(
-    hparams=hparams,
     callbacks=[
-        jrl.PrintCallback(
-            hparams=hparams, print_hparam_keys=["epoch"], print_data_keys=["reward"]
-        ),
         jrl.QEvalCallback(eval_on_collect=True, eval_on_train=True, eval_on_test=True),
+        jrl.PrintCallback(
+            keys=[
+                "epoch",
+                "agent",
+                "collect_reward",
+                "train_reward",
+                "test_reward",
+                "q_collect",
+                "q_train",
+                "q_test",
+            ],
+        ),
     ],
-).train(self_play_agents, train_env, test_env)
+)
+
+all_hparams = trainer.train(
+    agents=agents,
+    all_hparams=all_hparams,
+    env=train_env,
+    test_env=test_env,
+    training_epochs=10,
+)
+
+with open("hparams.json", "w") as f:
+    json.dump(hparams, f)

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import itertools
 from typing import Tuple, List, Mapping, Union, Callable
+from copy import deepcopy
 
 import numpy as np
 
@@ -174,8 +175,10 @@ class ReplayBuffer:
             + self.hparams["age_replay_coef"] * (epoch - self.hparams["epoch"])
             for epoch, traj in self.trajs.items()
         }
+        weights_arr = np.array(list(weights.values()))
+        weights_arr = weights_arr - np.min(weights_arr) + 1e3
         epoch = np.random.choice(
-            list(weights.keys()), p=list(weights.values()) / sum(weights.values())
+            list(weights.keys()), p=weights_arr / np.sum(weights_arr)
         )
         return self.trajs[epoch]
 
@@ -247,111 +250,130 @@ class ParallelDriver:
 class ParallelTrainer:
     """Trains `BatchEnv` environments and mutliple agents
     (with N=1 single-agent supported as a special case).
-
-    Uses following hyperparameters:
-    - `epoch`: the current epoch. Reads and writes to this variable.
-    - `epochs`: the number of epochs to train for.
-    - `min_steps_per_epoch`: the minimum number of steps to train for each epoch.
     """
 
-    def __init__(self, hparams: dict, callbacks: List[Callable]):
-        self.hparams = hparams
+    def __init__(self, callbacks: List[Callable]):
         self.callbacks = callbacks
 
     def train(
         self,
-        agents: Mapping[str, Agent],
+        agents: Union[List[Agent], Mapping[str, Agent]],
+        all_hparams: Mapping[str, Mapping[str, any]],
         env: BatchEnv,
         test_env: BatchEnv = None,
-        buffers: Mapping[str, ReplayBuffer] = None,
         collect_driver: ParallelDriver = None,
         test_driver: ParallelDriver = None,
-        histories: Mapping[str, Mapping[int, Mapping[str, any]]] = None,
-    ) -> Mapping[int, Mapping[str, any]]:
+        training_epochs: int = 1,
+    ) -> Mapping[str, Mapping[str, any]]:
+        """Train a group of agents on a batched environment.
+
+        Args:
+            agents (Union[List[Agent], Mapping[str, Agent]]): The agents to train.
+            all_hparams (Mapping[str, Mapping[str, any]]): Data (including hyperparameters) for each agent. If only
+                a single agent is provided, it will be used for all agents. Can also include hyperparameters for
+                agents that are not being trained. Each agent's hyperparameters will be updated as the training
+                progresses. Agent hyperparameters should include the following keys:
+                 - `min_steps_per_epoch`: the minimum number of steps to train each epoch for in a `train` call.
+                as well as any other hyperparameters that the buffer, driver, or agent needs. NOTE: hparam dicts
+                should not be shared between agents.
+            env (BatchEnv): The environment to train on.
+            test_env (BatchEnv, optional): The environment to test on. Defaults to `env`.
+            collect_driver (ParallelDriver, optional): Train environment driver. Defaults to `ParallelDriver`.
+            test_driver (ParallelDriver, optional): Test environment driver. Defaults to `collect_driver`.
+            training_epochs (int, optional): How many epochs to train for. Defaults to 1.
+
+        Returns:
+            Mapping[str, Mapping[str, any]]: updated hyperparameters for each agent.
+        """
+
+        if isinstance(agents, list):
+            agents = {agent.name: agent for agent in agents}
 
         agent_names = list(agents.keys())
+
+        if len(all_hparams) == 1:
+            single_hparam = next(iter(all_hparams.values()))
+            all_hparams = {
+                agent_name: deepcopy(single_hparam) for agent_name in agent_names
+            }
 
         # initialize defaults
         if test_env is None:
             test_env = env
-        if buffers is None:
-            buffers = dict()
         if collect_driver is None:
             collect_driver = ParallelDriver()
         if test_driver is None:
             test_driver = collect_driver
-        if histories is None:
-            histories = dict()  # {agent_name: {epoch: {...data}}}
 
         # build uninitialized agent-specific objects
-        for agent_name in agent_names:
-            if agent_name not in buffers:
-                buffers[agent_name] = ReplayBuffer(hparams=self.hparams)
-            if agent_name not in histories:
-                histories[agent_name] = dict()
+        for name in agent_names:
+            if "epoch" not in all_hparams[name]:
+                all_hparams[name]["epoch"] = 0
+            if "history" not in all_hparams[name]:
+                all_hparams[name]["history"] = dict()  # {epoch: {...data}}
+            if "buffer" not in all_hparams[name]:
+                all_hparams[name]["buffer"] = ReplayBuffer(hparams=all_hparams[name])
+            if "steps" not in all_hparams[name]:
+                all_hparams[name]["steps"] = 0
 
         # run training loop
-        for epoch in range(self.hparams["epoch"], self.hparams["epochs"]):
-            self.hparams["epoch"] = epoch
+        for train_epoch in range(training_epochs):
 
             # collect trajectories
-            steps = 0
-            while steps < self.hparams["min_steps_per_epoch"]:
+            while any(
+                all_hparams[name]["steps"] < all_hparams[name]["min_steps_per_epoch"]
+                for name in agent_names
+            ):
                 collect_trajs = collect_driver.drive(agents, env)
-                steps += min(len(traj) for _, traj in collect_trajs.items())
-                for agent_name in agent_names:
-                    buffers[agent_name].add(collect_trajs[agent_name])
+                for name in agent_names:
+                    all_hparams[name]["buffer"].add(collect_trajs[name])
+                    all_hparams[name]["steps"] += len(collect_trajs[name])
 
             # train
             train_trajs = {
-                agent_name: buffers[agent_name].sample() for agent_name in agent_names
+                name: all_hparams[name]["buffer"].sample() for name in agent_names
             }
-            for agent_name in agent_names:
-                agents[agent_name].train(train_trajs[agent_name])
+            for name in agent_names:
+                agents[name].train(train_trajs[name])
 
             # test
             test_trajs = test_driver.drive(agents, env)
 
             # record history and run callbacks
-            for agent_name in agent_names:
-                histories[agent_name][epoch] = {
-                    "epoch": epoch,
-                    "agent": agents[agent_name],
+            for name in agent_names:
+                agent_epoch = all_hparams[name]["epoch"]
+                collect_traj = all_hparams[name]["buffer"].trajs[agent_epoch]
+                all_hparams[name]["history"][agent_epoch] = {
+                    "epoch": agent_epoch,
+                    "agent": deepcopy(agents[name]),
                     "all_agents": agents,
                     "env": env,
                     "test_env": test_env,
-                    "collect_traj": collect_trajs[agent_name],
-                    "train_traj": train_trajs[agent_name],
-                    "test_traj": test_trajs[agent_name],
-                    "buffer": buffers[agent_name],
+                    "collect_traj": collect_traj,
+                    "train_traj": train_trajs[name],
+                    "test_traj": test_trajs[name],
+                    "collect_reward": agents[name].reward(collect_traj),
+                    "train_reward": agents[name].reward(train_trajs[name]),
+                    "test_reward": agents[name].reward(test_trajs[name]),
                 }
                 for callback in self.callbacks:
-                    callback(histories[agent_name][epoch])
+                    callback(all_hparams[name]["history"][agent_epoch])
 
-        return histories
+            # increment individual agent epoch's
+            for name in agent_names:
+                all_hparams[name]["epoch"] += 1
+
+        return all_hparams
 
 
 class PrintCallback:
-    def __init__(
-        self,
-        hparams: dict,
-        print_hparam_keys: List[str] = None,
-        print_data_keys: List[str] = None,
-    ):
-        if print_hparam_keys is None:
-            print_hparam_keys = ["epoch"]
-        if print_data_keys is None:
-            print_data_keys = []
-
-        self.hparams = hparams
-        self.print_hparam_keys = print_hparam_keys
-        self.print_data_keys = print_data_keys
+    def __init__(self, keys: List[str]):
+        self.keys = keys
 
     def __call__(self, data: Mapping[str, any]):
-        for key in self.print_hparam_keys:
-            print(f"{key}: {self.hparams[key]}", end="\t")
-        for key in self.print_data_keys:
+        for key in self.keys:
             print(f"{key}: {data[key]}", end="\t")
+        print()
 
 
 class QEvalCallback:
@@ -373,17 +395,26 @@ class QEvalCallback:
 
         if self.eval_on_collect:
             traj = data["collect_traj"]
-            q_val = agent.q_eval(traj)
+            cat_obs = np.concatenate([s.obs for s in traj], axis=0)
+            cat_actions = np.concatenate([s.action for s in traj], axis=0)
+            q_vals = agent.q_eval(cat_obs, cat_actions)
+            q_val = np.mean(q_vals)
             data["q_collect"] = q_val
 
         if self.eval_on_train:
             traj = data["train_traj"]
-            q_val = agent.q_eval(traj)
+            cat_obs = np.concatenate([s.obs for s in traj], axis=0)
+            cat_actions = np.concatenate([s.action for s in traj], axis=0)
+            q_vals = agent.q_eval(cat_obs, cat_actions)
+            q_val = np.mean(q_vals)
             data["q_train"] = q_val
 
         if self.eval_on_test:
             traj = data["test_traj"]
-            q_val = agent.q_eval(traj)
+            cat_obs = np.concatenate([s.obs for s in traj], axis=0)
+            cat_actions = np.concatenate([s.action for s in traj], axis=0)
+            q_vals = agent.q_eval(cat_obs, cat_actions)
+            q_val = np.mean(q_vals)
             data["q_test"] = q_val
 
 
