@@ -74,7 +74,7 @@ Traj = List[BatchStep]
 
 
 def reshape_traj_batch_size(traj: Traj, new_batch_size: int) -> Traj:
-    """Changes the batch size - length tradeoff of a trajectory. Drops remainder"""
+    """Changes the batch size - length tradeoff of a trajectory. Drops remainder."""
     stack = []
     for step in traj:
         stack += Step.unbatch(step)

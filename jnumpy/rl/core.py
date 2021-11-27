@@ -9,7 +9,6 @@ from typing import Tuple, List, Mapping, Union, Callable
 from copy import deepcopy
 
 import numpy as np
-from numpy.core.defchararray import isnumeric
 
 import jnumpy.core as jnp
 from jnumpy.rl.types import Step, BatchStep, NoBatchStep, Traj
