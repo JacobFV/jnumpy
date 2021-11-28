@@ -24,17 +24,139 @@ $ pip install .
 import jnumpy as jnp
 ```
 
-## Example
+## Examples
+
+### Low-level stuff
 
 ```python
+import jnumpy as jnp
+
+W = jnp.Var(np.random.randn(5, 3), trainable=True, name='W')
+b_const = jnp.Var(np.array([1., 2., 3.]), name='b')  # trainable=False by default
+
+def model(x):
+    return x @ W + b_const
+
+def loss(y, y_pred):
+    loss = (y - y_pred)**2
+    loss = jnp.ReduceSum(loss, axis=1)
+    loss = jnp.ReduceSum(loss, axis=0)
+    return loss
+
+opt = jnp.SGD(0.01)
+
+for _ in range(10):
+    # make up some data
+    x = jnp.Var(np.random.randn(100, 5))
+    y = jnp.Var(np.random.randn(100, 3))
+
+    # forward pass
+    y_pred = model(x)
+    loss_val = loss(y, y_pred)
+    
+    # backpropagation
+    opt.minimize(loss)
+```
+
+### Neural networks
+```python
+import jnumpy as jnp
+import jnumpy.nn as jnn
+
+conv_net = jnn.Sequential(
+    [
+        jnn.Conv2D(32, 3, 2, activation=jnp.Relu),
+        jnn.Conv2D(64, 3, 2, activation=jnp.Relu),
+        jnn.Flatten(),
+        jnn.Dense(512, jnp.Sigm),
+        jnn.Dense(1, jnp.Linear),
+    ]
+)
+```
+
+### Reinforcement learning
+
+```python
+import jnumpy as jnp
+import jnumpy.rl as jrl
+
+shared_encoder = conv_net  # same archiecture as the conv_net above
+
+# agents
+agentA_hparams = {...}
+agentB_hparams = {...}
+agentC_hparams = {...}
+
+# categorical deep Q-network:
+#   <q0,q1,..,qn> = dqn(o)
+#   a* = arg_i max qi
+agentA = jrl.agents.CategoricalDQN(
+    num_actions=agentA_hparams['num_actions'], 
+    encoder=shared_encoder, 
+    hparams=agentA_hparams, 
+    name='agentA'
+    )
+
+# standard deep Q-network:
+#   a* = arg_a max dqn(o, a)
+agentB = jrl.agents.RealDQN(
+    num_actions=agentB_hparams['num_actions'], 
+    encoder=shared_encoder, 
+    hparams=agentB_hparams, 
+    name='agentB'
+    )
+
+# random agent:
+#   pick a random action
+agentC = jrl.agents.RandomAgent(agentC_hparams['num_actions'], name='agentC')
+
+# init enviroments
+train_env = jrl.ParallelEnv(
+    batch_size=32,
+    env_init_fn=lambda: MyEnv(...),  # `jrl.Environment` subclass. Must have `reset` and `step` methods.
+)
+dev_env = jrl.ParallelEnv(
+    batch_size=8,
+    env_init_fn=lambda: MyEnv(...),
+)
+test_env = jrl.ParallelEnv(
+    batch_size=8,
+    env_init_fn=lambda: MyEnv(...),
+)
+
+# train
+trainer = jrl.ParallelTrainer(callbacks=[
+    jrl.PrintCallback(['epoch', 'agent', 'collect_reward', 'q_train', 'q_test']),
+    jrl.QEvalCallback(eval_on_train=True, eval_on_test=True),
+])
+trainer.train(
+    agents={'agentA': agentA, 'agentB': agentB},
+    all_hparams={'agentA': agentA_hparams, 'agentB': agentB_hparams},
+    env=train_env,
+    test_env=dev_env,
+    training_epochs=10,
+)
+
+# test
+driver = ParallelDriver()
+trajs = driver.drive(
+    agents={'agentA': agentA, 'agentB': agentB},
+    env=test_env
+)
+per_agent_rewards = {
+    agent_name: sum(step.reward for step in traj) 
+    for agent_name, traj in trajs.items()}
+print('cumulative test rewards:', per_agent_rewards)
 ```
 
 ## Limitations and Future Work
 
-Version 2.0 is under development (see the dev branch) and will feature:
-- static execution graphs
-- a keras-style neural network API with `fit`, `evaluate`, and `predict`
-- richer collections of optimizers, metrics, and losses
+Future versions will feature:
+- add `fit`, `evaluate`, and `predict` to `jnp.Sequential`
+- recurrent network layers
+- static execution graphs allowing breadth-first graph traversal
+- more optimizers, metrics, and losses
+- io loaders for csv's, images, and models (maybe also for graphs)
 - more examples
 
 Also maybe for the future:
