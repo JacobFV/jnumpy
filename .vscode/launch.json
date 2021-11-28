@@ -12,6 +12,17 @@
       "console": "integratedTerminal"
     },
     {
+      "name": "Python: Connect-N CLI Test",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/connect-n/play.py",
+      "console": "integratedTerminal",
+      "args": [
+        "<",
+        "${workspaceFolder}/examples/connect-n/test.txt"
+      ]
+    },
+    {
       "name": "Python: Module",
       "type": "python",
       "request": "launch",

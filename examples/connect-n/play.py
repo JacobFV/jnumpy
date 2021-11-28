@@ -58,53 +58,53 @@ encoder_pool.append(
 
 
 def maybe_input(prompt: str, default: str) -> str:
-    answer = input(f"{prompt} (default: {default}): ").strip()
+    answer = input(f"{prompt} (default: {default}): ").strip().lower()
     if answer == "":
         return default
     return answer
 
 
 def get_activation_fn(name: str) -> jnn.Activation:
-    if name == "Relu":
+    name = name.strip().lower()
+    if name == "relu":
         return jnp.Relu
-    elif name == "Sigm":
+    elif name == "sigm":
         return jnp.Sigm
-    elif name == "Tanh":
+    elif name == "tanh":
         return jnp.Tanh
-    elif name == "Linear":
+    elif name == "linear":
         return jnp.Linear
     else:
         raise ValueError(f"Invalid activation: {name}")
 
 
 def new_encoder() -> jnn.Sequential:
+    print("\nNew encoder:")
     layers = []
-    print("\n")
     num_layers = int(maybe_input("Enter number of conv layers", 2))
-    for _ in range(num_layers):
+    for i in range(num_layers):
+        print(f"\nConv Layer {i}:")
         filters = int(maybe_input("Enter number of filters", 8))
-        kernel_size = eval(
-            input("Enter kernel size (odd, int or 2-tuple; default: 3): ").strip()
+        kernel_size = eval(maybe_input("Enter kernel size (odd, int or 2-tuple)", "3"))
+        stride = eval(maybe_input("Enter stride (int or 2-tuple)", "1"))
+        activation = get_activation_fn(
+            maybe_input(
+                "Enter activation function ('relu', 'sigm', 'tanh', or 'linear')",
+                "linear",
+            )
         )
-        stride = eval(input("Enter stride (int|2-tuple; default: 1): ").strip())
-        activation = (
-            input("Enter activation function (`Relu`, `Sigm`, `Tanh`, `Linear`): ")
-            .strip()
-            .lower()
-        )
-        activation = get_activation_fn(activation)
         layers.append(jnn.Conv2D(filters, kernel_size, stride, "same", activation))
     layers.append(jnn.GlobalMaxPooling(1))
-    encoder_name_candidate = input("Enter encoder name: ").strip()
+    encoder_name_candidate = input("\nPlease name this encoder: ").strip()
     encoder = jnn.Sequential(layers, name=encoder_name_candidate)
     encoder_pool.append(encoder)
     return encoder
 
 
 def get_encoder() -> jnn.Sequential:
-    print("\n")
-    print("All encoders: " + ", ".join([enc.name for enc in encoder_pool]))
-    print("\n")
+    print("\nAll encoders:")
+    for encoder in encoder_pool:
+        print(f" - {encoder.name}: conv_layers={len(encoder.layers)-1}")
     encoder_name = input('Enter encoder name (or enter "new"): ').strip().lower()
     if encoder_name == "new":
         encoder = new_encoder()
@@ -113,10 +113,10 @@ def get_encoder() -> jnn.Sequential:
     return encoder
 
 
-def new_hparams() -> dict:
+def get_hparams(agent_name: str) -> dict:
+    print(f"\nHyperameters for {agent_name}:")
     hparams = dict()
     hparams.update(default_hparams)
-    print("\n")
     for key, value in default_hparams.items():
         if isinstance(value, float):
             hparams[key] = float(maybe_input(f"Enter {key}", value))
@@ -132,14 +132,16 @@ def new_hparams() -> dict:
 
 
 def new_agent() -> jrl.Agent:
-    print("\n")
-    agent_type = (
-        input(
-            "Enter agent type (Random, RealDQN, or CategoricalDQN; default: 'RealDQN'): "
-        )
-        .strip()
-        .lower()
+    print("\nNew agent:")
+    print("Agent types:")
+    print(" - random: takes random actions at each step")
+    print(" - dqn: standard deep Q-network; a* = arg_a max dqn(o, a)")
+    print(
+        " - categorical-dqn: categorical deep Q-network; <q0,q1,..,qn> = dqn(o); a* = arg_i max qi"
     )
+    agent_type = input("Select an agent type: ").strip().lower()
+    while agent_type not in ["random", "dqn", "categorical-dqn"]:
+        agent_type = input("Invalid agent type; try again: ").strip().lower()
     agent_name_candidate = input("Please name this agent: ").strip().lower()
     if agent_type == "random":
         num_actions = int(input("Enter num_actions (int): ").strip())
@@ -153,10 +155,10 @@ def new_agent() -> jrl.Agent:
             success_replay_coef=1.5,  # How much to upweight successful experience
             age_replay_coef=0.5,  # How much to downweight older trajectories
         )
-    elif agent_type == "realdqn" or agent_type == "dqn":
+    elif agent_type == "dqn":
         num_actions = int(input("Enter num_actions (int): ").strip())
         encoder = get_encoder()
-        hparams = new_hparams()
+        hparams = get_hparams(agent_name=agent_name_candidate)
         agent = jrl.agents.RealDQN(
             num_actions=num_actions,
             encoder=encoder,
@@ -164,10 +166,10 @@ def new_agent() -> jrl.Agent:
             name=agent_name_candidate,
         )
         hparam_pool[agent.name] = hparams
-    elif agent_type == "categoricaldqn":
+    elif agent_type == "categorical-dqn":
         num_actions = int(input("Enter num_actions (int): ").strip())
         encoder = get_encoder()
-        hparams = new_hparams()
+        hparams = get_hparams(agent_name=agent_name_candidate)
         agent = jrl.agents.CategoricalDQN(
             num_actions=num_actions,
             encoder=encoder,
@@ -180,13 +182,15 @@ def new_agent() -> jrl.Agent:
 
 
 def get_agent() -> jrl.Agent:
-    print("\n")
-    print("All agents:")
+    print("\nAll agents:")
     for agent in agent_pool:
         print(
             f" - {agent.name}: type={type(agent).__name__} num_actions={agent.num_actions} epoch={hparam_pool[agent.name]['epoch']}"
         )
-    agent_name = input('Enter agent name (or enter "new"): ').strip().lower()
+    agent_name = input("Enter agent name (or enter 'new'): ").strip().lower()
+    while agent_name not in [agent.name for agent in agent_pool] + ["new"]:
+        print(f"Invalid agent name: {agent_name}")
+        agent_name = input("Enter agent name (or enter 'new'): ").strip().lower()
     if agent_name == "new":
         return new_agent()
     else:
@@ -219,15 +223,26 @@ def train():
     train_env = get_env("Training environment")
     test_env = get_env("Test environment")
 
+    while train_env.env.board_size != test_env.env.board_size:
+        print(
+            f"Board sizes must match: {train_env.env.board_size} vs {test_env.env.board_size}"
+        )
+        print(
+            f"Please choose a test environment with a board size of {train_env.env.board_size}"
+        )
+        test_env = get_env("Test environment")
+
     agent1 = get_agent()
     agent2 = get_agent()
 
-    if agent1.num_actions != agent2.num_actions:
-        raise ValueError(
+    while agent1.num_actions != agent2.num_actions:
+        print(
             "Agents must have the same number of actions: "
-            f"{agent1.name} has {agent1.num_actions}, "
-            f"{agent2.name} has {agent2.num_actions}."
+            f"{agent1.name} has {agent1.num_actions} actions but "
+            f"{agent2.name} has {agent2.num_actions} actions."
         )
+        agent1 = get_agent()
+        agent2 = get_agent()
 
     trainer = jrl.ParallelTrainer(
         callbacks=[
@@ -249,9 +264,9 @@ def train():
         ],
     )
     global hparam_pool
-    training_epochs = int(maybe_input("Enter number of training epochs (int)", 10))
+    training_epochs = int(maybe_input("\nEnter number of training epochs (int)", 10))
     train_start_time = datetime.datetime.now()
-    print(f"Training {agent1.name} with {agent2.name}...")
+    print(f"\nTraining {agent1.name} with {agent2.name}...")
     hparam_pool = trainer.train(
         agents=[agent1, agent2],
         all_hparams=hparam_pool,
@@ -291,20 +306,26 @@ def play():
     )
     batch_env = jrl.Batch1Env(env)  # to handle executing single actions
 
-    step = env.reset()
-    if human_first:
+    def get_move():
         env.render()
-        step.action = int(input(f"Enter move (0-{env.board_size}): ").strip())
-        step = batch_env.step(step)
+        action = input(f"Enter move (0-{env.board_size}): ").strip()
+        while action not in [str(i) for i in range(env.board_size)]:
+            print(f"{action} is not a valid move.")
+            action = input(f"Enter move (0-{env.board_size}): ").strip()
+        action = np.eye(env.board_size)[int(action)][None, :]
+
+    step = batch_env.reset()
+    if human_first:
+        action = get_move()
+        step = batch_env.step(action)
     while True:
-        step.action = agent.act(step)
-        step = batch_env.step(step)
+        action = agent.forward(step)
+        step = batch_env.step(action)
         if step.done:
             winner = agent.name if step.reward > 0 else human_name
             break
-        env.render()
-        step.action = int(input(f"Enter move (0-{env.board_size}): ").strip())
-        step = batch_env.step(step)
+        action = get_move()
+        step = batch_env.step(action)
         if step.done:
             winner = human_name if step.reward > 0 else agent.name
             break
@@ -318,7 +339,6 @@ def play():
 
 
 def main_menu():
-    print(128 * "\n")
     print("1. Train")
     print("2. Play")
     print("3. Exit")
@@ -341,9 +361,11 @@ def main():
     print("CSE 4309 Machine Learning Project 7++")
     print("Copyright 2021 Jacob Valdez. Released under the MIT License")
     print("Code at https://github.com/JacobFV/jnumpy")
-    print("\n")
+    print()
     while True:
         main_menu()
+        print(128 * "\n")
+
         continue
 
         try:

@@ -340,7 +340,13 @@ class CategoricalDQN(Agent):
         hparams (dict): Hyperparameters.
     """
 
-    def __init__(self, num_actions: int, encoder: jnn.Layer, hparams: dict):
+    def __init__(
+        self,
+        num_actions: int,
+        encoder: jnn.Layer,
+        hparams: dict,
+        name: str = "CategoricalDQN",
+    ):
 
         self.num_actions = num_actions
         self.encoder = encoder  # [B, H, W, C] -> [B, W, d_enc]
@@ -354,7 +360,7 @@ class CategoricalDQN(Agent):
         )  # [B, W, d_enc] -> [B, A, 1]
         self.hparams = hparams
 
-        super(CategoricalDQN, self).__init__(policy=self._policy)
+        super(CategoricalDQN, self).__init__(policy=self._policy, name=name)
 
     def _policy(self, obs: np.ndarray) -> np.ndarray:
 
@@ -388,13 +394,15 @@ class CategoricalDQN(Agent):
 
             obs_T = jnp.Var(step.obs, name="obs")  # [B, H, W, 2]
             action_indeces = np.argmax(step.action, axis=1)  # [B]
+            action_mask = np.eye(self.num_actions)[action_indeces]  # [B, A]
+            action_mask_T = jnp.Var(action_mask, name="action_mask")  # [B, A]
             next_obs_T = jnp.Var(step.next_obs, name="next_obs")  # [B, H, W, 2]
             r_T = jnp.Var(step.reward, name="reward")  # [B]
 
             # compute previous Q value using the actual (not necesarily optimal) action selected
             enc_T = self.encoder(obs_T)  # [B, W, d_enc]
             qvals_T = self.head(enc_T)[..., 0]  # [B, W]
-            Q_now_T = qvals_T[action_indeces]  # [B]
+            Q_now_T = jnp.ReduceSum(qvals_T * action_mask_T, axis=1)  # [B]
             reg_loss_now_T = self.encoder.loss + self.head.loss  # []
 
             # compute the maximum possible next step Q-value
@@ -431,8 +439,11 @@ class CategoricalDQN(Agent):
         # prepare inputs
         obs_T = jnp.Var(obs)  # [B, H, W, 2]
         action_indeces = np.argmax(action, axis=1)  # [B]
+        action_mask = np.eye(self.num_actions)[action_indeces]  # [B, A]
+        action_mask_T = jnp.Var(action_mask, name="action_mask")  # [B, A]
 
         enc_T = self.encoder(obs_T)  # [B, W, d_enc]
         qvals_T = self.head(enc_T)[..., 0]  # [B, W]
+        Q_T = jnp.ReduceSum(qvals_T * action_mask_T, axis=1)  # [B]
 
-        return qvals_T.val[action_indeces]  # [B]
+        return Q_T.val  # [B]

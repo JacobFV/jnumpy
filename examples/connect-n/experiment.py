@@ -22,12 +22,12 @@ hparams = dict(
     min_epsilon=0.01,  # Final value for epsilon
     discount=0.9,  # Discount factor
     epoch=0,  # Current epoch (different for each agent)
-    batch_size=8,  # Number of samples per training batch
+    batch_size=2,  # Number of samples per training batch
     train_batch_size=32,  # Batch size for training
     board_size=10,  # Board size
     train_win_length=4,  # Number of pieces in a row needed to win in training
     test_win_length=5,  # Number of pieces in a row needed to win in testing
-    min_steps_per_epoch=64,  # Minimum number of steps per epoch
+    min_steps_per_epoch=2,  # Minimum number of steps per epoch
     num_steps_replay_coef=0.5,  # How much to upweight longer episodes
     success_replay_coef=1.5,  # How much to upweight successful experience
     age_replay_coef=0.5,  # How much to downweight older trajectories
@@ -43,13 +43,20 @@ encoder = jnn.Sequential(
 )  # [B, H, W, 2] -> [B, W, d_enc]
 
 agents = [
-    jrl.agents.RealDQN(hparams["board_size"], encoder, deepcopy(hparams), name="Ally"),
+    jrl.agents.RandomAgent(hparams["board_size"], name="Ally"),
     jrl.agents.RealDQN(hparams["board_size"], encoder, deepcopy(hparams), name="Bob"),
     jrl.agents.RealDQN(hparams["board_size"], encoder, deepcopy(hparams), name="Cara"),
-    jrl.agents.RealDQN(hparams["board_size"], encoder, deepcopy(hparams), name="Dan"),
-    jrl.agents.RealDQN(hparams["board_size"], encoder, deepcopy(hparams), name="Emma"),
+    jrl.agents.CategoricalDQN(
+        hparams["board_size"], encoder, deepcopy(hparams), name="Dan"
+    ),
+    jrl.agents.CategoricalDQN(
+        hparams["board_size"], encoder, deepcopy(hparams), name="Emma"
+    ),
 ]
-all_hparams = {agent.name: deepcopy(agent.hparams) for agent in agents}
+all_hparams = {
+    agent.name: agent.hparams if hasattr(agent, "hparams") else deepcopy(hparams)
+    for agent in agents
+}
 
 train_env = jrl.ParallelEnv(
     hparams["batch_size"],
