@@ -6,14 +6,14 @@ with open("README.md") as f:
 
 setuptools.setup(
     name="jnumpy",
-    version="1.1.0",
+    version="1.0.10",
     author="Jacob Valdez",
     author_email="jacobfv@msn.com",
     description="Jacob's numpy library for machine learning.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/JacobFV/jnumpy",
-    packages=["jnumpy"],
+    packages=setuptools.find_packages(exclude=["core"]),
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

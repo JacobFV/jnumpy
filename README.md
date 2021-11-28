@@ -93,6 +93,6 @@ All code in this repository is licensed under the MIT license. No restrictions, 
 
 ## Contributing
 
-This is a small project, and I don't plan on growing it much. You are welcome to fork and contribute or email me `jacob` [dot] `valdez` [at] `limboid` [dot] `ai` if you would like to take over.
+This is a small project, and I don't plan on growing it much. You are welcome to fork and contribute or email me `jacob` [dot] `valdez` [at] `limboid` [dot] `ai` if you would like to take over. You can add your name to the copyright if you make a PR or your own branch.
 
-The codebase is kepy in only a few files, and I have tried to minimize the use of module prefixes because my CSE 4308/4309/4392 classes require the submissions to be in a single file. 
+The codebase is kept in only a few files, and I have tried to minimize the use of module prefixes because my CSE 4308/4309/4392 classes require the submissions to be stitched togethor in a single file. 

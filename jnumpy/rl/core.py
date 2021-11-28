@@ -274,9 +274,13 @@ class ParallelTrainer:
                 a single agent is provided, it will be used for all agents. Can also include hyperparameters for
                 agents that are not being trained. Each agent's hyperparameters will be updated as the training
                 progresses. Agent hyperparameters should include the following keys:
-                 - `min_steps_per_epoch`: the minimum number of steps to train each epoch for in a `train` call.
-                as well as any other hyperparameters that the buffer, driver, or agent needs. NOTE: hparam dicts
-                should not be shared between agents.
+                - `epoch`: the current training epoch for that agent.
+                - `min_steps_per_epoch`: the minimum number of steps to train each epoch for in a `train` call.
+                - `num_steps_replay_coef`: the weight of the number of steps in the trajectory in the loss function.
+                - `success_replay_coef`: the weight of the success of the agent in the loss function.
+                - `age_replay_coef`: the weight of the age of the trajectory in the loss function.
+                as well as any other hyperparameters that the agent needs. NOTE: hparam dicts should not be
+                shared between agents since they are updated individually.
             env (BatchEnv): The environment to train on.
             test_env (BatchEnv, optional): The environment to test on. Defaults to `env`.
             collect_driver (ParallelDriver, optional): Train environment driver. Defaults to `ParallelDriver`.
@@ -375,10 +379,11 @@ class PrintCallback:
 
     def __call__(self, data: Mapping[str, any]):
         for key in self.keys:
-            if isinstance(data[key], float):
-                print(f"{key}: {data[key]:+6.4f}", end="\t")
-            else:
-                print(f"{key}: {data[key]}", end="\t")
+            if key in data and data[key] is not None:
+                if isinstance(data[key], float):
+                    print(f"{key}: {data[key]:+6.4f}", end="\t")
+                else:
+                    print(f"{key}: {data[key]}", end="\t")
         print()
 
 
