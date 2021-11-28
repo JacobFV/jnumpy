@@ -409,8 +409,8 @@ class Sequential(Layer):
         >>> dense_net = Sequential([
                 Dense(10, jnp.Relu),
                 Dense(128, jnp.Relu),
-                Dense(512, jnp.Sigm),
-                Dense(1, lambda x: x)
+                Dense(512, jnp.Tanh),
+                Dense(1, jnp.Sigm)
             ])
         >>> dense_net(X_T)
 
@@ -421,7 +421,7 @@ class Sequential(Layer):
                 Conv2D(64, 3, 2, activation=jnp.Relu),
                 Flatten(),
                 Dense(512, jnp.Sigm),
-                Dense(1, lambda x: x)
+                Dense(1, jnp.Linear)
             ])
         >>> conv_net(img_T)
     """

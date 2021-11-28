@@ -6,7 +6,7 @@ with open("README.md") as f:
 
 setuptools.setup(
     name="jnumpy",
-    version="1.0.10",
+    version="1.1",
     author="Jacob Valdez",
     author_email="jacobfv@msn.com",
     description="Jacob's numpy library for machine learning.",
