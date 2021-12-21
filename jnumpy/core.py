@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import Tuple, List, Union, Optional
 
 import numpy as np
-from numpy.lib.arraysetops import isin
 
 
 V = np.array  # Value type
