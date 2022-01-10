@@ -15,5 +15,3 @@ conv_net = jnn.Sequential(
     ]
 )
 y_T = conv_net(img_T)
-
-print(f"{img_T.shape} --conv_net--> {y_T.shape}")

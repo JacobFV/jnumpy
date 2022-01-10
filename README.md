@@ -6,6 +6,8 @@
 
 Jacob's numpy library for machine learning
 
+📰 Attention: You can now purchase jnumpy-themed apparel [here](hhttps://jacobfv.threadless.com/designs/jnumpy-logo).
+
 ## Getting started
 
 1. Install from `pip` or clone locally:
