@@ -6,7 +6,7 @@
 
 Jacob's numpy library for machine learning
 
-📰 Attention: You can now purchase jnumpy-themed apparel [here](hhttps://jacobfv.threadless.com/designs/jnumpy-logo).
+_📰 Attention: You can now purchase jnumpy-themed apparel [here](hhttps://jacobfv.threadless.com/designs/jnumpy-logo)._
 
 ## Getting started
 
