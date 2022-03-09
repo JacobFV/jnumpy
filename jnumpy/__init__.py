@@ -3,6 +3,7 @@
 """Jnumpy: Jacob's numpy library for machine learning."""
 
 
+import jnumpy.utils
 from jnumpy.core import *
 import jnumpy.nn
 import jnumpy.rl

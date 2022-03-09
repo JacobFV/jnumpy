@@ -44,8 +44,10 @@ encoder = jnn.Sequential(
 
 agents = [
     jrl.agents.RandomAgent(hparams["board_size"], name="Ally"),
-    jrl.agents.RealDQN(hparams["board_size"], encoder, deepcopy(hparams), name="Bob"),
-    jrl.agents.RealDQN(hparams["board_size"], encoder, deepcopy(hparams), name="Cara"),
+    jrl.agents.RealDQN(hparams["board_size"], encoder,
+                       deepcopy(hparams), name="Bob"),
+    jrl.agents.RealDQN(hparams["board_size"], encoder,
+                       deepcopy(hparams), name="Cara"),
     jrl.agents.CategoricalDQN(
         hparams["board_size"], encoder, deepcopy(hparams), name="Dan"
     ),
@@ -54,14 +56,15 @@ agents = [
     ),
 ]
 all_hparams = {
-    agent.name: agent.hparams if hasattr(agent, "hparams") else deepcopy(hparams)
+    agent.name: agent.hparams if hasattr(
+        agent, "hparams") else deepcopy(hparams)
     for agent in agents
 }
 
 train_env = jrl.ParallelEnv(
     hparams["batch_size"],
     lambda: BoardEnv(
-        board_size=hparams["board_size"],
+        initial_board_size=hparams["board_size"],
         win_length=hparams["train_win_length"],
         reward_mode="dense_stateless",
     ),
@@ -70,7 +73,7 @@ train_env = jrl.ParallelEnv(
 test_env = jrl.ParallelEnv(
     hparams["batch_size"],
     lambda: BoardEnv(
-        board_size=hparams["board_size"],
+        initial_board_size=hparams["board_size"],
         win_length=hparams["test_win_length"],
         reward_mode="dense_stateless",
     ),
@@ -78,7 +81,8 @@ test_env = jrl.ParallelEnv(
 
 trainer = jrl.ParallelTrainer(
     callbacks=[
-        jrl.QEvalCallback(eval_on_collect=True, eval_on_train=True, eval_on_test=True),
+        jrl.QEvalCallback(eval_on_collect=True,
+                          eval_on_train=True, eval_on_test=True),
         jrl.PrintCallback(
             keys=[
                 "epoch",

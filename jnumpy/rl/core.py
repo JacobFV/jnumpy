@@ -317,7 +317,8 @@ class ParallelTrainer:
             if "history" not in all_hparams[name]:
                 all_hparams[name]["history"] = dict()  # {epoch: {...data}}
             if "buffer" not in all_hparams[name]:
-                all_hparams[name]["buffer"] = ReplayBuffer(hparams=all_hparams[name])
+                all_hparams[name]["buffer"] = ReplayBuffer(
+                    hparams=all_hparams[name])
             if "steps" not in all_hparams[name]:
                 all_hparams[name]["steps"] = 0
 
@@ -427,9 +428,3 @@ class QEvalCallback:
             q_vals = agent.q_eval(cat_obs, cat_actions)
             q_val = np.mean(q_vals)
             data["q_test"] = q_val
-
-
-# TODO
-# - also make a recurrent DQN agent (estimate q function of a sequence of states)
-# - make a simple greedy connect4 agent
-# - train the preprocessor on an auxillary objective to estimate the max connected for each length for self and for oponent

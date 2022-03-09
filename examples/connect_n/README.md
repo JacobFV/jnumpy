@@ -88,3 +88,10 @@ epoch: 3        agent: Dan      collect_reward: -0.0017 train_reward: +0.1139   
 
 ## Analysis
 
+[I never performed analysis on this experiment.]
+
+## Future Work
+
+- make a recurrent DQN agent (estimate q function of a sequence of states)
+- make a simple greedy connect4 agent
+- train the preprocessor on an auxillary objective to estimate the max connected for each length for self and for oponent
